@@ -1,5 +1,6 @@
 const domain="";//您的域名//独立部署需要填写Go服务api接口域名(部署在Go目录下可以留空)
-const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
+//const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
+const localhost="http://192.168.2.34:8500";
 window.globalConfig = {
 	Main_url:`${domain}`,//域名
 	Main_url_dev:`${localhost}`,//域名
@@ -7,23 +8,23 @@ window.globalConfig = {
     Root_url_dev:`${localhost}/admin`,//Api服务器域名-开发环境
 	Upload_url:`${domain}/common`,//Api服务器域名
 	Upload_url_dev:`${localhost}/common`,//Api服务器域名-开发环境
-	AppTitle_zhCN:"GoFlyGen开发框架系统",
-    AppTitle_zhTW:"GoFlyGen開發框架系統",
-	AppTitle_enUS:"GoFlyGen Dev frame system",
-    CompanySite:"//goflys.cn/",//公司官网
-    ICP:"滇ICP备19001128号-3",//备案号
-    Company:"昆明立师科技有限公司",//公司名称
-    Address:"中国·昆明",
+	AppTitle_zhCN:"思极智巡",
+    AppTitle_zhTW:"思極智巡",
+	AppTitle_enUS:"Sijizhixun",
+    CompanySite:"//siji.cn/",//公司官网
+    ICP:"浙江",//备案号
+    Company:"浙江思极",//公司名称
+    Address:"中国·杭州",
     
-    TeamSite:"//goflys.cn/",//技术团队官网
-    Team:"GoFly技术团队",//技术团队，没有则填空""
+    TeamSite:"//siji.cn/",//技术团队官网
+    Team:"思极实验室",//技术团队，没有则填空""
     loginTitle_zhCN:`Go语言开发用<span class="sub-title">GoFlyGen框架</span>`,
     loginTitle_zhTW:`Go語言開發用<span class="sub-title">GoFlyGen框架</span>`,
     loginTitle_enUS:`<span class="sub-title">GoFlyGen</span> framework is used for Go development`,
     loginDesc_zhCN:["开发效率高","基础功能完善","开发文档全面"],
     loginDesc_zhTW:["開發效率高","基礎功能完善","開發文檔全面"],
     loginDesc_enUS:["High development efficiency","Complete basic functions","Comprehensive development documentation"],
-    Copyright:"GoFly团队提供技术支持",
+    Copyright:"思极实验室提供技术支持",
     RouterHome:"home",//路由默认入口
     MaxSizeImage:5,//最大上传图片大小,单位M
 	MaxSizeVideo:150,//最大上传视频大小,单位M
