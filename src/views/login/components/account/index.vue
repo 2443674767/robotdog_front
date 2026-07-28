@@ -99,13 +99,15 @@ onBeforeUnmount(() => {
 })
 
 const captchaImgBase64 = ref()
+// 验证码暂时隐藏，需要时改为 true 并恢复 onMounted 中的 handleCaptcha
 const captchaShow = ref<boolean>(false)
 // 获取验证码
 const handleCaptcha = async() => {
   const resdata= await getCaptcha({type:"image"})
   const { id,show, img, expireTime } = resdata
   form.codeid = id
-  captchaShow.value= show
+  // captchaShow.value = show
+  captchaShow.value = false
   captchaImgBase64.value = img
   form.expired = false
   startTimer(expireTime)
@@ -162,7 +164,8 @@ const handleLogin = async () => {
 }
 
 onMounted(() => {
-  handleCaptcha()
+  // 验证码暂时隐藏，不请求验证码
+  // handleCaptcha()
 })
 </script>
 
