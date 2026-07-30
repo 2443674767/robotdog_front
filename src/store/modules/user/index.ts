@@ -11,6 +11,7 @@ import { setToken,getToken, clearToken } from '@/utils/auth';
 import { removeRouteListener } from '@/utils/route-listener';
 import { UserState} from './types';
 import useAppStore from '../app';
+import { redirectToLogin } from '@/utils/redirect-login';
 
 const useUserStore = defineStore('user', {
   state: (): UserState => ({
@@ -74,7 +75,7 @@ const useUserStore = defineStore('user', {
     //登录成功后加载菜单
     async afterLoginAction(){
       if (!getToken()) return false;
-      this.info() 
+      await this.info()
       const appStore = useAppStore();
       await appStore.fetchServerMenuConfig({});
       //注册路由
@@ -105,20 +106,16 @@ const useUserStore = defineStore('user', {
         this.logoutCallBack();
       }
       setToken(undefined);
-      goLogin && router.push('/login');
+      if (goLogin) {
+        redirectToLogin();
+      }
     },
     //清除登录信息
     clearloginfo() {
       clearToken();
       removeRouteListener();
       const currentRoute = router.currentRoute.value;
-      router.push({
-        name:"login",
-        query: {
-          ...router.currentRoute.value.query,
-          redirect: currentRoute.name as string,
-        },
-      });
+      redirectToLogin(currentRoute.name as string);
     },
   },
 });

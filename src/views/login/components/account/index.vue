@@ -144,10 +144,14 @@ const handleLogin = async () => {
     loginConfig.value.password = rememberMe ? form.password : ''
     Message.success({content:t('login.form.login.success'),id:"errmsg"})
   }catch (error) {
-    const errMsg = (error as Error).message
+    const errMsg = (error as Error).message || ''
     if(errMsg.includes("No match for")){//如果默认跳转首页不存在则默认跳转菜单中第一项路由
        const appStore = useAppStore();
-        var pathName :any=appStore.appAsyncRoute[0]
+        var pathName :any=appStore.appAsyncRoute?.[0]
+         if(!pathName){
+           Message.error({content: errMsg || '登录后路由未就绪，请重试', id:"errmsg"})
+           return
+         }
          if(!pathName.path&&pathName.children){
             pathName=pathName.children[0].path
          }else{

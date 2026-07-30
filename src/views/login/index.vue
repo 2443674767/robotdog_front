@@ -6,8 +6,14 @@
         <div class="login-title">{{ $t('login.form.welcome') }}{{ AppTitle }}</div>
       </div>
 
-      <EmailLogin v-show="isEmailLogin" />
-      <a-tabs v-show="!isEmailLogin" class="login-tabs" default-active-key="1">
+      <EmailLogin v-if="formReady && isEmailLogin" />
+      <a-tabs
+        v-else-if="formReady"
+        v-model:active-key="activeTab"
+        class="login-tabs"
+        :animation="false"
+        destroy-on-hide
+      >
         <a-tab-pane key="1" :title="$t('login.form.tabacount')">
           <AccountLogin />
         </a-tab-pane>
@@ -26,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import AccountLogin from './components/account/index.vue';
 import PhoneLogin from './components/phone/index.vue';
 import EmailLogin from './components/email/index.vue';
@@ -34,6 +40,8 @@ import useLocale from '@/hooks/locale';
 
 const { currentLocale } = useLocale();
 const isEmailLogin = ref(false);
+const activeTab = ref('1');
+const formReady = ref(false);
 
 const toggleLoginMode = () => {
   isEmailLogin.value = !isEmailLogin.value;
@@ -50,6 +58,19 @@ const AppTitle = computed(() => {
     default:
       return window?.globalConfig.AppTitle_enUS;
   }
+});
+
+onMounted(() => {
+  // 清理主界面残留的弹层/遮罩，避免挡住输入
+  document.body.style.overflow = '';
+  document.body.style.pointerEvents = '';
+  document.querySelectorAll(
+    '.arco-modal-mask,.arco-drawer-mask,.arco-dropdown,.arco-trigger-popup,.arco-overlay-mask'
+  ).forEach((el) => el.parentElement?.removeChild(el));
+  // 下一帧再挂载表单，确保布局干净
+  requestAnimationFrame(() => {
+    formReady.value = true;
+  });
 });
 </script>
 
@@ -94,6 +115,15 @@ const AppTitle = computed(() => {
 
 .login-tabs {
   margin-top: 4px;
+}
+
+/* 避免退出登录后 Tabs 高度被错误固定，导致表单只显示一部分 */
+:deep(.arco-tabs-content),
+:deep(.arco-tabs-content-list),
+:deep(.arco-tabs-content-item),
+:deep(.arco-tabs-content-item-active) {
+  height: auto !important;
+  overflow: visible !important;
 }
 
 .login-switch {

@@ -2,6 +2,7 @@ import type { Router, LocationQueryRaw } from 'vue-router';
 import NProgress from 'nprogress'; // progress bar
 import { useUserStore } from '@/store';
 import { isLogin } from '@/utils/auth';
+import { redirectToLogin } from '@/utils/redirect-login';
 
 export default function setupUserLoginInfoGuard(router: Router) {
   router.beforeEach(async (to, from, next) => {
@@ -16,13 +17,8 @@ export default function setupUserLoginInfoGuard(router: Router) {
           next();
         } catch (error) {
           await userStore.logout();
-          next({
-            name: 'login',
-            query: {
-              redirect: to.name,
-              ...to.query,
-            } as LocationQueryRaw,
-          });
+          redirectToLogin(to.name as string);
+          return;
         }
       }
     }else {
