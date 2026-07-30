@@ -6,7 +6,9 @@ export function redirectToLogin(redirectName?: string) {
       ? `?redirect=${encodeURIComponent(redirectName)}`
       : '';
 
-  // Hash 模式仅改 # 路径不会触发整页刷新，需改 search 强制重新加载文档
-  const url = `${window.location.origin}${base}?_r=${Date.now()}#/login${redirectQuery}`;
-  window.location.href = url;
+  // 去掉 ?_r= 等 search，只保留干净 origin+base，再强制整页刷新
+  //（Hash 模式仅改 hash 不会刷新文档）
+  const cleanBase = `${window.location.origin}${base}`;
+  window.location.replace(`${cleanBase}#/login${redirectQuery}`);
+  window.location.reload();
 }
