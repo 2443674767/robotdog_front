@@ -30,4 +30,7 @@ window.globalConfig = {
 	MaxSizeVideo:150,//最大上传视频大小,单位M
     //DefaultAccountPassword:["admin","admin888"],//演示账号密码值为：["admin","admin888"]，正式项目请修改为空数组-即值为：[]
     DefaultAccountPassword:["amon", "123"],
+    // 驾驶舱视频：浏览器无法直连 RTSP，需媒体服务器转出 HTTP-FLV / HLS 后再填 StreamPlayUrl
+    RtspUrl: "rtsp://192.168.1.100:554/stream",
+    StreamPlayUrl: "", // 例: http://host/live/cam.live.flv 或 http://host/live/cam.m3u8
 };

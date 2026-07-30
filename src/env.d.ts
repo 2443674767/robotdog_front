@@ -9,7 +9,13 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string;
 }
 declare interface Window {
-  globalConfig: any
+  globalConfig: {
+    RtspUrl?: string
+    StreamPlayUrl?: string
+    [key: string]: any
+  }
 }
 declare module '@arco-design/color'
 declare module '@umoteam/editor'
+declare module 'hls.js'
+declare module 'mpegts.js'

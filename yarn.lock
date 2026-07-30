@@ -1185,16 +1185,27 @@ bin-version@^3.0.0:
     execa "^1.0.0"
     find-versions "^3.0.0"
 
-bin-wrapper@^4.0.0, bin-wrapper@^4.0.1:
-  version "0.1.0"
-  resolved "https://registry.npmmirror.com/bin-wrapper-china/-/bin-wrapper-china-0.1.0.tgz"
-  integrity sha512-1UCm17WYEbgry50tup+AQN+JGVEVzoW4f8HMl899k1lvuFxWKGZXl/G2fgxQxAckRjnloO3ijLVVEsv8zescUg==
+bin-wrapper@^4.0.0:
+  version "4.1.0"
+  resolved "https://registry.npmmirror.com/bin-wrapper/-/bin-wrapper-4.1.0.tgz"
+  integrity sha512-hfRmo7hWIXPkbpi0ZltboCMVrU+0ClXR/JgbCKKjlDjQf6igXa7OwdqNcFWQZPZTgiY7ZpzE3+LjjkLiTN2T7Q==
   dependencies:
     bin-check "^4.1.0"
     bin-version-check "^4.0.0"
-    binary-mirror-config "^1"
     download "^7.1.0"
-    import-lazy "^4.0.0"
+    import-lazy "^3.1.0"
+    os-filter-obj "^2.0.0"
+    pify "^4.0.1"
+
+bin-wrapper@^4.0.1:
+  version "4.1.0"
+  resolved "https://registry.npmmirror.com/bin-wrapper/-/bin-wrapper-4.1.0.tgz"
+  integrity sha512-hfRmo7hWIXPkbpi0ZltboCMVrU+0ClXR/JgbCKKjlDjQf6igXa7OwdqNcFWQZPZTgiY7ZpzE3+LjjkLiTN2T7Q==
+  dependencies:
+    bin-check "^4.1.0"
+    bin-version-check "^4.0.0"
+    download "^7.1.0"
+    import-lazy "^3.1.0"
     os-filter-obj "^2.0.0"
     pify "^4.0.1"
 
@@ -1202,11 +1213,6 @@ binary-extensions@^2.0.0:
   version "2.3.0"
   resolved "https://registry.npmmirror.com/binary-extensions/-/binary-extensions-2.3.0.tgz"
   integrity sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==
-
-binary-mirror-config@^1:
-  version "1.41.0"
-  resolved "https://registry.npmmirror.com/binary-mirror-config/-/binary-mirror-config-1.41.0.tgz"
-  integrity sha512-ZiIhR1s6Sv1Fv6qCQqfPjx0Cj86BgFlhqNxZgHkQOWcxJcMbO3mj1iqsuVjowYqJqeZL8e52+IEv7IRnSX6T6w==
 
 bl@^1.0.0:
   version "1.2.3"
@@ -2115,6 +2121,11 @@ es-module-lexer@^0.9.3:
   resolved "https://registry.npmmirror.com/es-module-lexer/-/es-module-lexer-0.9.3.tgz"
   integrity sha512-1HQ2M2sPtxwnvOvT1ZClHyQDiggdNjURWpY2we6aMKCQiUVxTmVs2UYPLIrD84sS+kMdUwfBSylbJPwNnBrnHQ==
 
+es6-promise@^4.2.5:
+  version "4.2.8"
+  resolved "https://registry.npmmirror.com/es6-promise/-/es6-promise-4.2.8.tgz"
+  integrity sha512-HJDGx5daxeIvxdBxvG2cb9g4tEvwIk3i8+nhX0yGrYmZUzbkdg8QbDevheDB8gd0//uPj4c1EQua8Q+MViT0/w==
+
 esbuild-darwin-arm64@0.14.54:
   version "0.14.54"
   resolved "https://registry.npmmirror.com/esbuild-darwin-arm64/-/esbuild-darwin-arm64-0.14.54.tgz"
@@ -2764,6 +2775,11 @@ header-case@^2.0.4:
     capital-case "^1.0.4"
     tslib "^2.0.3"
 
+hls.js@^1.6.16:
+  version "1.6.16"
+  resolved "https://registry.npmmirror.com/hls.js/-/hls.js-1.6.16.tgz"
+  integrity sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==
+
 hosted-git-info@^2.1.4:
   version "2.8.9"
   resolved "https://registry.npmmirror.com/hosted-git-info/-/hosted-git-info-2.8.9.tgz"
@@ -2918,10 +2934,10 @@ import-fresh@^3.0.0, import-fresh@^3.3.0:
     parent-module "^1.0.0"
     resolve-from "^4.0.0"
 
-import-lazy@^4.0.0:
-  version "4.0.0"
-  resolved "https://registry.npmmirror.com/import-lazy/-/import-lazy-4.0.0.tgz"
-  integrity sha512-rKtvo6a868b5Hu3heneU+L4yEQ4jYKLtjpnPeUdK7h0yzXGmyBTypknlkCvHFBqfX9YlorEiMM6Dnq/5atfHkw==
+import-lazy@^3.1.0:
+  version "3.1.0"
+  resolved "https://registry.npmmirror.com/import-lazy/-/import-lazy-3.1.0.tgz"
+  integrity sha512-8/gvXvX2JMn0F+CDlSC4l6kOmVaLOO3XLkksI7CI3Ud95KDYJuYur2b9P/PUt/i/pDAMd/DulQsNbbbmRRsDIQ==
 
 indent-string@^2.1.0:
   version "2.1.0"
@@ -3714,6 +3730,14 @@ mozjpeg@^7.0.0:
   dependencies:
     bin-build "^3.0.0"
     bin-wrapper "^4.0.0"
+
+mpegts.js@^1.8.0:
+  version "1.8.0"
+  resolved "https://registry.npmmirror.com/mpegts.js/-/mpegts.js-1.8.0.tgz"
+  integrity sha512-ZtujqtmTjWgcDDkoOnLvrOKUTO/MKgLHM432zGDI8oPaJ0S+ebPxg1nEpDpLw6I7KmV/GZgUIrfbWi3qqEircg==
+  dependencies:
+    es6-promise "^4.2.5"
+    webworkify-webpack "github:xqq/webworkify-webpack"
 
 ms@2.1.2:
   version "2.1.2"
@@ -5412,6 +5436,10 @@ webpack-virtual-modules@^0.6.1:
   version "0.6.1"
   resolved "https://registry.npmmirror.com/webpack-virtual-modules/-/webpack-virtual-modules-0.6.1.tgz"
   integrity sha512-poXpCylU7ExuvZK8z+On3kX+S8o/2dQ/SVYueKA0D4WEMXROXgY8Ez50/bQEUmvoSMMrWcrJqCHuhAbsiwg7Dg==
+
+"webworkify-webpack@github:xqq/webworkify-webpack":
+  version "2.1.5"
+  resolved "git+ssh://git@github.com/xqq/webworkify-webpack.git#24d1e719b4a6cac37a518b2bb10fe124527ef4ef"
 
 which@^1.2.9:
   version "1.3.1"

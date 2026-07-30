@@ -1,146 +1,98 @@
 <template>
-  <div class="gf-container">
-    <div class="left-side">
-      <div class="panel">
-        <Banner />
-        <DataPanel />
-        <ContentChart />
-      </div>
-      <a-grid :cols="24" :col-gap="16" :row-gap="16" style="margin-top: 16px">
-        <a-grid-item
-          :span="{ xs: 24, sm: 24, md: 24, lg: 12, xl: 12, xxl: 12 }"
-        >
-          <PopularContent />
-        </a-grid-item>
-        <a-grid-item
-          :span="{ xs: 24, sm: 24, md: 24, lg: 12, xl: 12, xxl: 12 }"
-        >
-          <CategoriesPercent />
-        </a-grid-item>
-      </a-grid>
+  <div class="cockpit">
+    <div class="cockpit-mid">
+      <InspectPie class="side-panel" />
+      <VideoMain class="video-panel" />
+      <AlarmTrend class="side-panel" />
     </div>
-    <div class="right-side">
-      <a-grid :cols="24" :row-gap="16">
-        <a-grid-item :span="24">
-          <div class="panel moduler-wrap">
-            <QuickOperation />
-            <RecentlyVisited />
-          </div>
-        </a-grid-item>
-        <a-grid-item class="panel" :span="24">
-          <Carousel />
-        </a-grid-item>
-        <a-grid-item class="panel" :span="24">
-          <Announcement />
-        </a-grid-item>
-        <a-grid-item class="panel" :span="24">
-          <Docs />
-        </a-grid-item>
-      </a-grid>
+    <div class="cockpit-bottom">
+      <InspectBar class="bottom-chart" />
+      <RealtimeMsg class="bottom-msg" />
+      <StatCards class="bottom-stats" />
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-  import Banner from './components/banner.vue';
-  import DataPanel from './components/data-panel.vue';
-  import ContentChart from './components/content-chart.vue';
-  import PopularContent from './components/popular-content.vue';
-  import CategoriesPercent from './components/categories-percent.vue';
-  import RecentlyVisited from './components/recently-visited.vue';
-  import QuickOperation from './components/quick-operation.vue';
-  import Announcement from './components/announcement.vue';
-  import Carousel from './components/carousel.vue';
-  import Docs from './components/docs.vue';
+import StatCards from './components/cockpit/StatCards.vue';
+import VideoMain from './components/cockpit/VideoMain.vue';
+import InspectPie from './components/cockpit/InspectPie.vue';
+import AlarmTrend from './components/cockpit/AlarmTrend.vue';
+import InspectBar from './components/cockpit/InspectBar.vue';
+import RealtimeMsg from './components/cockpit/RealtimeMsg.vue';
 </script>
 
 <script lang="ts">
-  export default {
-    name: 'home', // If you want the include property of keep-alive to take effect, you must name the component
-  };
+export default {
+  name: 'home',
+};
 </script>
 
 <style lang="less" scoped>
-  .gf-container {
-    background-color: var(--color-fill-1);
-    display: flex;
+.cockpit {
+  --cockpit-gap: 10px;
+  height: calc(100vh - 140px);
+  min-height: 640px;
+  display: grid;
+  /* 视频区贴顶，约占高度 60%；底部约占 40% */
+  grid-template-rows: minmax(0, 0.6fr) minmax(0, 0.4fr);
+  gap: var(--cockpit-gap);
+  padding: 4px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at top, rgba(22, 93, 255, 0.18), transparent 45%),
+    linear-gradient(180deg, #06101f 0%, #0a1628 100%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cockpit-mid {
+  display: grid;
+  /* 视频约占横向 50%，左右各 25% */
+  grid-template-columns: minmax(0, 0.25fr) minmax(0, 0.5fr) minmax(0, 0.25fr);
+  gap: var(--cockpit-gap);
+  min-height: 0;
+}
+
+.cockpit-bottom {
+  display: grid;
+  /* 区域巡检 | 实时消息 | 指标卡独立模块 */
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.7fr);
+  gap: var(--cockpit-gap);
+  min-height: 0;
+}
+
+.side-panel,
+.video-panel,
+.bottom-chart,
+.bottom-msg,
+.bottom-stats {
+  min-height: 0;
+  min-width: 0;
+}
+
+@media screen and (max-width: 1200px) {
+  .cockpit {
     height: auto;
-  }
-
-  .left-side {
-    flex: 1;
-  }
-
-  .right-side {
-    width: 280px;
-    margin-left: 16px;
-  }
-
-  .panel {
-    background-color: var(--color-bg-2);
-    border-radius: 4px;
+    min-height: unset;
     overflow: auto;
   }
-  :deep(.panel-border) {
-    margin-bottom: 0;
-    border-bottom: 1px solid rgb(var(--gray-2));
+
+  .cockpit-mid,
+  .cockpit-bottom {
+    grid-template-columns: 1fr;
   }
-  .moduler-wrap {
-    border-radius: 4px;
-    background-color: var(--color-bg-2);
-    :deep(.text) {
-      font-size: 12px;
-      text-align: center;
-      color: rgb(var(--gray-8));
-    }
 
-    :deep(.wrapper) {
-      margin-bottom: 8px;
-      text-align: center;
-      cursor: pointer;
-
-      &:last-child {
-        .text {
-          margin-bottom: 0;
-        }
-      }
-      &:hover {
-        .icon {
-          color: rgb(var(--arcoblue-6));
-          background-color: #e8f3ff;
-        }
-        .text {
-          color: rgb(var(--arcoblue-6));
-        }
-      }
-    }
-
-    :deep(.icon) {
-      display: inline-block;
-      width: 32px;
-      height: 32px;
-      margin-bottom: 4px;
-      color: rgb(var(--dark-gray-1));
-      line-height: 32px;
-      font-size: 16px;
-      text-align: center;
-      background-color: rgb(var(--gray-1));
-      border-radius: 4px;
-    }
+  .side-panel,
+  .video-panel,
+  .bottom-chart,
+  .bottom-msg,
+  .bottom-stats {
+    min-height: 240px;
   }
-</style>
 
-<style lang="less" scoped>
-  // responsive
-  .mobile {
-    .container {
-      display: block;
-    }
-    .right-side {
-      // display: none;
-      width: 100%;
-      margin-left: 0;
-      margin-top: 16px;
-    }
+  .video-panel {
+    min-height: 360px;
   }
+}
 </style>

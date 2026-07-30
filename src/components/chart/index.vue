@@ -11,11 +11,11 @@
   import { ref, nextTick } from 'vue';
   import VCharts from 'vue-echarts';
   import { use } from 'echarts/core'
-  import { PieChart } from 'echarts/charts'
+  import { PieChart, LineChart, BarChart } from 'echarts/charts'
   import { LegendComponent, TitleComponent, TooltipComponent ,GridComponent } from 'echarts/components'
   import { CanvasRenderer } from 'echarts/renderers'
 
-  use([TitleComponent, TooltipComponent, LegendComponent, PieChart, CanvasRenderer,GridComponent ])
+  use([TitleComponent, TooltipComponent, LegendComponent, PieChart, LineChart, BarChart, CanvasRenderer,GridComponent ])
   defineProps({
     options: {
       type: Object,

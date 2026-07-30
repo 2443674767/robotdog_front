@@ -1,5 +1,5 @@
 export default {
-  'menu.home': 'Home',
+  'menu.home': 'Cockpit',
   'menu.exception': 'Exception',
   'menu.user': 'User Center',
   'menu.system':"System",

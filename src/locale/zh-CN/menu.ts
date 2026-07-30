@@ -1,5 +1,5 @@
 export default {
-  'menu.home': '首页概况',
+  'menu.home': '驾驶舱面板',
   'menu.exception': '异常页',
   'menu.user': '个人中心',
   'menu.system':"系统管理",
