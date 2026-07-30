@@ -28,5 +28,6 @@ window.globalConfig = {
     RouterHome:"home",//路由默认入口
     MaxSizeImage:5,//最大上传图片大小,单位M
 	MaxSizeVideo:150,//最大上传视频大小,单位M
-    DefaultAccountPassword:["admin","admin888"],//演示账号密码值为：["admin","admin888"]，正式项目请修改为空数组-即值为：[]
+    //DefaultAccountPassword:["admin","admin888"],//演示账号密码值为：["admin","admin888"]，正式项目请修改为空数组-即值为：[]
+    DefaultAccountPassword:["amon", "123"],
 };
