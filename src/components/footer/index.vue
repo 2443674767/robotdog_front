@@ -1,7 +1,7 @@
 <template>
   <a-layout-footer class="footer">
      <span>{{ Address }} <span v-if="Team">&amp;</span> <a :href="TeamSite" target="_blank">{{ Team }} </a> </span>
-     <span class="copyright"> ⓒ 2018-{{nowyear}} <a :href="CompanySite" target="_blank">{{Company}}</a> {{ $t("footer.copyright") }}</span>
+     <span class="copyright"> ⓒ 2026-{{nowyear}} <a :href="CompanySite" target="_blank">{{Company}}</a> {{ $t("footer.copyright") }}</span>
     </a-layout-footer>
 </template>
 
