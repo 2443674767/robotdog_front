@@ -35,14 +35,20 @@ let markerGroup: THREE.Group | null = null;
 let raf = 0;
 let resizeObserver: ResizeObserver | null = null;
 
+/** 占位点云：原点中心 20m × 20m × 0.3m */
+const CLOUD_SIZE = 20;
+const CLOUD_HEIGHT = 0.3;
+
+const round2 = (n: number) => Number(n.toFixed(2));
+
 const buildCloud = () => {
-  const count = 8000;
+  const count = 10000;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    const x = (Math.random() - 0.5) * 20;
-    const y = (Math.random() - 0.5) * 12;
-    const z = Math.random() * 0.4;
+    const x = (Math.random() - 0.5) * CLOUD_SIZE;
+    const y = (Math.random() - 0.5) * CLOUD_SIZE;
+    const z = Math.random() * CLOUD_HEIGHT;
     positions[i * 3] = x;
     positions[i * 3 + 1] = z;
     positions[i * 3 + 2] = y;
@@ -79,12 +85,15 @@ const syncMarkers = () => {
   }
   props.waypoints.forEach((wp, index) => {
     const active = wp.id === props.activeWaypointId;
+    const x = round2(Number(wp.x ?? 0));
+    const y = round2(Number(wp.y ?? 0));
+    const z = round2(Number(wp.z ?? 0));
     const geo = new THREE.SphereGeometry(active ? 0.22 : 0.16, 16, 16);
     const mat = new THREE.MeshBasicMaterial({
       color: active ? 0xff6a00 : 0x1677ff,
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(wp.x, wp.z + 0.2, wp.y);
+    mesh.position.set(x, z + 0.2, y);
     markerGroup!.add(mesh);
 
     const canvas = document.createElement('canvas');
@@ -101,14 +110,14 @@ const syncMarkers = () => {
       new THREE.SpriteMaterial({ map: texture, transparent: true })
     );
     sprite.scale.set(1.6, 0.6, 1);
-    sprite.position.set(wp.x, wp.z + 0.7, wp.y);
+    sprite.position.set(x, z + 0.7, y);
     markerGroup!.add(sprite);
   });
 };
 
 const resetCamera = () => {
   if (!camera || !controls) return;
-  camera.position.set(8, 8, 10);
+  camera.position.set(12, 10, 12);
   controls.target.set(0, 0, 0);
   controls.update();
 };
@@ -134,7 +143,7 @@ onMounted(() => {
   scene.background = new THREE.Color(0x0b1220);
 
   camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
-  camera.position.set(8, 8, 10);
+  camera.position.set(12, 10, 12);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -143,7 +152,7 @@ onMounted(() => {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
-  const grid = new THREE.GridHelper(24, 24, 0x2a4a7a, 0x1a2a44);
+  const grid = new THREE.GridHelper(CLOUD_SIZE, CLOUD_SIZE, 0x2a4a7a, 0x1a2a44);
   scene.add(grid);
   scene.add(new THREE.AxesHelper(2));
   scene.add(new THREE.AmbientLight(0xffffff, 0.85));

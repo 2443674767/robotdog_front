@@ -68,9 +68,21 @@
       <a-form :model="wpForm" layout="vertical">
         <a-form-item label="名称" required><a-input v-model="wpForm.name" /></a-form-item>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="X"><a-input-number v-model="wpForm.x" style="width: 100%" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="Y"><a-input-number v-model="wpForm.y" style="width: 100%" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="Z"><a-input-number v-model="wpForm.z" style="width: 100%" /></a-form-item></a-col>
+          <a-col :span="8">
+            <a-form-item label="X">
+              <a-input-number v-model="wpForm.x" :precision="2" :step="0.01" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="Y">
+              <a-input-number v-model="wpForm.y" :precision="2" :step="0.01" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="Z">
+              <a-input-number v-model="wpForm.z" :precision="2" :step="0.01" style="width: 100%" />
+            </a-form-item>
+          </a-col>
         </a-row>
         <a-form-item label="Yaw"><a-input-number v-model="wpForm.yaw" :min="-180" :max="180" style="width: 100%" /></a-form-item>
         <a-form-item label="地图ID"><a-input-number v-model="wpForm.map_id" style="width: 100%" /></a-form-item>
@@ -256,15 +268,17 @@ const removeDog = async (id: number) => {
   await fetchDogs();
 };
 
+const round2 = (n?: number | null) => Number(Number(n ?? 0).toFixed(2));
+
 const openWaypointModal = (id?: number) => {
   wpModal.id = id || null;
   if (id) {
     const item = waypoints.value.find((w) => w.id === id)!;
     Object.assign(wpForm, {
       name: item.name,
-      x: item.x ?? 0,
-      y: item.y ?? 0,
-      z: item.z ?? 0,
+      x: round2(item.x),
+      y: round2(item.y),
+      z: round2(item.z),
       yaw: item.yaw ?? 0,
       map_id: item.map_id,
       remark: item.remark || '',
@@ -293,6 +307,9 @@ const saveWaypointItem = async () => {
     await saveWaypointApi({
       ...(wpModal.id ? { id: wpModal.id } : {}),
       ...wpForm,
+      x: round2(wpForm.x),
+      y: round2(wpForm.y),
+      z: round2(wpForm.z),
     });
     Message.success(wpModal.id ? '航点已更新' : '航点已新增');
     wpModal.visible = false;
@@ -398,14 +415,17 @@ export default {
 }
 
 .side {
-  display: grid;
-  grid-template-rows: 1fr 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   padding-right: 2px;
+  overflow: hidden;
 }
 
 .side-block {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 @media screen and (max-width: 1100px) {
@@ -419,11 +439,11 @@ export default {
   }
 
   .side {
-    grid-template-rows: none;
+    overflow: visible;
   }
 
   .side-block {
-    min-height: 240px;
+    min-height: 0;
   }
 }
 </style>
