@@ -4,6 +4,7 @@
       class="map"
       :waypoints="waypoints"
       :active-waypoint-id="activeWaypointId"
+      :route-waypoint-ids="activeRouteWaypointIds"
     />
     <div class="side">
       <DogConfigList
@@ -116,7 +117,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import PointCloudMap from './components/PointCloudMap.vue';
 import DogConfigList from './components/DogConfigList.vue';
@@ -145,6 +146,12 @@ const routes = ref<RouteItem[]>([]);
 const activeDogId = ref<number | null>(null);
 const activeWaypointId = ref<number | null>(null);
 const activeRouteId = ref<number | null>(null);
+
+/** 当前选中航线的航点顺序（用于地图连线） */
+const activeRouteWaypointIds = computed(() => {
+  const route = routes.value.find((r) => r.id === activeRouteId.value);
+  return route?.waypoint_ids || [];
+});
 
 const loading = reactive({ dog: false, waypoint: false, route: false });
 
