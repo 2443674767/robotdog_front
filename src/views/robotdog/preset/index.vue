@@ -5,12 +5,14 @@
       :routes="routes"
       :active-route-id="activeRouteId"
       :active-waypoint-id="activeWaypointId"
+      :loading="loading"
       @select-route="onSelectRoute"
       @select-waypoint="onSelectWaypoint"
       @goto-waypoint="onGotoWaypoint"
-      @refresh="onRefresh"
+      @run-route="onRunRoute"
+      @refresh="fetchRoutes"
     />
-    <VideoPanel class="center" />
+    <VideoPanel class="center" :play-url="playUrl" :rtsp-url="rtspUrl" />
     <ControlPanel
       class="right"
       @dog-cmd="onDogCmd"
@@ -20,56 +22,161 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import RoutePanel from './components/RoutePanel.vue';
 import VideoPanel from './components/VideoPanel.vue';
 import ControlPanel from './components/ControlPanel.vue';
-import { mockRoutes, type RouteItem } from './mock';
+import {
+  dogCmd,
+  getPlayUrl,
+  getPresetRouteList,
+  gotoWaypoint,
+  ptzCmd,
+  runRoute,
+  type PresetRoute,
+} from '@/api/robotdog/preset';
+import { getWaypointList, type WaypointItem } from '@/api/robotdog/waypoint';
 
-const routes = ref<RouteItem[]>(JSON.parse(JSON.stringify(mockRoutes)));
-const activeRouteId = ref<number | null>(routes.value[0]?.id ?? null);
-const activeWaypointId = ref<number | null>(
-  routes.value[0]?.waypoints[0]?.id ?? null
-);
+const routes = ref<PresetRoute[]>([]);
+const waypointMap = ref<Map<number, WaypointItem>>(new Map());
+const activeRouteId = ref<number | null>(null);
+const activeWaypointId = ref<number | null>(null);
+const loading = ref(false);
+const playUrl = ref('');
+const rtspUrl = ref('');
 
-const onSelectRoute = (id: number) => {
+const activeRoute = computed(() => routes.value.find((r) => r.id === activeRouteId.value) || null);
+const activeDogId = computed(() => activeRoute.value?.dog_id || null);
+
+const enrichRoutes = (list: PresetRoute[]): PresetRoute[] =>
+  list.map((route) => {
+    const ids = route.waypoint_ids || [];
+    const waypoints = ids
+      .map((id) => waypointMap.value.get(id))
+      .filter(Boolean)
+      .map((wp) => ({
+        id: wp!.id,
+        name: wp!.name,
+        x: wp!.x,
+        y: wp!.y,
+        z: wp!.z,
+        yaw: wp!.yaw,
+      }));
+    return { ...route, waypoints };
+  });
+
+const loadPlayUrl = async (dogId: number | null | undefined) => {
+  if (!dogId) {
+    playUrl.value = '';
+    rtspUrl.value = '';
+    return;
+  }
+  try {
+    const res = await getPlayUrl({ dog_id: dogId });
+    playUrl.value = res?.play_url || '';
+    rtspUrl.value = res?.rtsp_url || '';
+  } catch {
+    playUrl.value = '';
+    rtspUrl.value = '';
+  }
+};
+
+const fetchRoutes = async () => {
+  loading.value = true;
+  try {
+    const [routeRes, wpRes] = await Promise.all([
+      getPresetRouteList({ page: 1, limit: 100, route_status: 'published' }),
+      getWaypointList({ page: 1, limit: 500 }),
+    ]);
+    const map = new Map<number, WaypointItem>();
+    (wpRes?.list || []).forEach((wp) => map.set(wp.id, wp));
+    waypointMap.value = map;
+    routes.value = enrichRoutes(routeRes?.list || []);
+
+    if (!routes.value.find((r) => r.id === activeRouteId.value)) {
+      activeRouteId.value = routes.value[0]?.id ?? null;
+    }
+    const route = routes.value.find((r) => r.id === activeRouteId.value);
+    if (!route?.waypoints?.find((w) => w.id === activeWaypointId.value)) {
+      activeWaypointId.value = route?.waypoints?.[0]?.id ?? null;
+    }
+    await loadPlayUrl(route?.dog_id);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const onSelectRoute = async (id: number) => {
   activeRouteId.value = id;
   const route = routes.value.find((r) => r.id === id);
-  activeWaypointId.value = route?.waypoints[0]?.id ?? null;
+  activeWaypointId.value = route?.waypoints?.[0]?.id ?? null;
+  await loadPlayUrl(route?.dog_id);
 };
 
 const onSelectWaypoint = (id: number) => {
   activeWaypointId.value = id;
 };
 
-const onGotoWaypoint = (id: number) => {
+const onGotoWaypoint = async (id: number) => {
+  const dogId = activeDogId.value;
+  if (!dogId) {
+    Message.warning('当前航线未绑定机械狗');
+    return;
+  }
   activeWaypointId.value = id;
-  const route = routes.value.find((r) => r.id === activeRouteId.value);
-  const wp = route?.waypoints.find((w) => w.id === id);
-  Message.info(`前往航点：${wp?.name || id}（接口待接入）`);
+  await gotoWaypoint({ dog_id: dogId, waypoint_id: id });
+  Message.success('已下发前往航点指令');
+  await fetchRoutes();
 };
 
-const onRefresh = () => {
-  routes.value = JSON.parse(JSON.stringify(mockRoutes));
-  Message.success('航线已刷新（本地占位数据）');
-};
-
-const onDogCmd = (cmd: string, payload?: Record<string, number | string>) => {
-  // TODO: 接入机械狗控制接口
-  if (cmd !== 'stop' && cmd !== 'speed') {
-    Message.info(`机械狗指令：${cmd}`);
+const onRunRoute = async (action: string) => {
+  if (!activeRouteId.value) {
+    Message.warning('请先选择航线');
+    return;
   }
-  console.debug('[dog-cmd]', cmd, payload);
+  await runRoute({
+    route_id: activeRouteId.value,
+    action,
+    ...(activeDogId.value ? { dog_id: activeDogId.value } : {}),
+  });
+  const tip =
+    ({ start: '已开始执行航线', pause: '航线已暂停', resume: '航线已继续', stop: '航线已停止' } as Record<
+      string,
+      string
+    >)[action] || '航线指令已下发';
+  Message.success(tip);
+  await fetchRoutes();
 };
 
-const onPtzCmd = (cmd: string, payload?: Record<string, number | string>) => {
-  // TODO: 接入云台控制接口
-  if (cmd !== 'stop') {
-    Message.info(`云台指令：${cmd}`);
+const onDogCmd = async (cmd: string, payload?: Record<string, number | string>) => {
+  const dogId = activeDogId.value;
+  if (!dogId) {
+    if (cmd !== 'stop' && cmd !== 'speed') {
+      Message.warning('请先选择已绑定机械狗的航线');
+    }
+    return;
   }
-  console.debug('[ptz-cmd]', cmd, payload);
+  await dogCmd({
+    dog_id: dogId,
+    cmd,
+    speed: Number(payload?.speed ?? 0.6),
+  });
 };
+
+const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) => {
+  await ptzCmd({
+    cmd,
+    ...(activeDogId.value ? { dog_id: activeDogId.value } : {}),
+    pan: Number(payload?.yaw ?? 0),
+    tilt: Number(payload?.pitch ?? 0),
+    zoom: Number(payload?.zoom ?? 1),
+  });
+};
+
+onMounted(() => {
+  fetchRoutes();
+});
 </script>
 
 <script lang="ts">

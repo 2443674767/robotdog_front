@@ -18,7 +18,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { WaypointItem } from '../mock';
+import type { WaypointItem } from '@/api/robotdog/waypoint';
 
 const props = defineProps<{
   waypoints: WaypointItem[];

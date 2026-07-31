@@ -2,76 +2,89 @@
   <div class="route-panel">
     <div class="panel-hd">
       <span class="panel-title">航线 / 航点</span>
-      <a-button size="mini" type="outline" @click="emit('refresh')">刷新</a-button>
+      <a-button size="mini" type="outline" :loading="loading" @click="emit('refresh')">刷新</a-button>
     </div>
 
-    <div class="route-list">
-      <div
-        v-for="route in routes"
-        :key="route.id"
-        class="route-item"
-        :class="{ active: route.id === activeRouteId }"
-        @click="emit('select-route', route.id)"
-      >
-        <div class="route-name">{{ route.name }}</div>
-        <a-tag size="small" :color="statusColor(route.status)">{{ statusText(route.status) }}</a-tag>
-      </div>
-    </div>
-
-    <div class="panel-sub">航点列表</div>
-    <div class="waypoint-list">
-      <div
-        v-for="(wp, idx) in currentWaypoints"
-        :key="wp.id"
-        class="waypoint-item"
-        :class="{ active: wp.id === activeWaypointId }"
-        @click="emit('select-waypoint', wp.id)"
-      >
-        <div class="wp-index">{{ idx + 1 }}</div>
-        <div class="wp-body">
-          <div class="wp-name">{{ wp.name }}</div>
-          <div class="wp-meta">
-            X {{ wp.x }} · Y {{ wp.y }} · Z {{ wp.z }} · Yaw {{ wp.yaw }}°
-          </div>
+    <a-spin :loading="loading" style="width: 100%; flex: 1; min-height: 0; display: flex; flex-direction: column">
+      <div class="route-list">
+        <div
+          v-for="route in routes"
+          :key="route.id"
+          class="route-item"
+          :class="{ active: route.id === activeRouteId }"
+          @click="emit('select-route', route.id)"
+        >
+          <div class="route-name">{{ route.name }}</div>
+          <a-tag size="small" :color="statusColor(route.status)">{{ statusText(route.status) }}</a-tag>
         </div>
-        <a-button size="mini" type="text" @click.stop="emit('goto-waypoint', wp.id)">前往</a-button>
+        <a-empty v-if="!loading && !routes.length" description="暂无已发布航线" />
       </div>
-      <a-empty v-if="!currentWaypoints.length" description="请选择航线" />
-    </div>
+
+      <div class="panel-sub">航点列表</div>
+      <div class="waypoint-list">
+        <div
+          v-for="(wp, idx) in currentWaypoints"
+          :key="wp.id"
+          class="waypoint-item"
+          :class="{ active: wp.id === activeWaypointId }"
+          @click="emit('select-waypoint', wp.id)"
+        >
+          <div class="wp-index">{{ idx + 1 }}</div>
+          <div class="wp-body">
+            <div class="wp-name">{{ wp.name }}</div>
+            <div class="wp-meta">
+              X {{ wp.x ?? 0 }} · Y {{ wp.y ?? 0 }} · Z {{ wp.z ?? 0 }} · Yaw {{ wp.yaw ?? 0 }}°
+            </div>
+          </div>
+          <a-button size="mini" type="text" @click.stop="emit('goto-waypoint', wp.id)">前往</a-button>
+        </div>
+        <a-empty v-if="!loading && !currentWaypoints.length" description="请选择航线" />
+      </div>
+
+      <div class="route-actions">
+        <a-button type="primary" size="small" :disabled="!activeRouteId" @click="emit('run-route', 'start')">执行航线</a-button>
+        <a-button size="small" :disabled="!activeRouteId" @click="emit('run-route', 'pause')">暂停</a-button>
+        <a-button size="small" status="warning" :disabled="!activeRouteId" @click="emit('run-route', 'stop')">停止</a-button>
+      </div>
+    </a-spin>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { computed } from 'vue';
-import type { RouteItem, Waypoint } from '../mock';
+import type { PresetRoute, PresetWaypoint } from '@/api/robotdog/preset';
 
 const props = defineProps<{
-  routes: RouteItem[];
+  routes: PresetRoute[];
   activeRouteId: number | null;
   activeWaypointId: number | null;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'select-route', id: number): void;
   (e: 'select-waypoint', id: number): void;
   (e: 'goto-waypoint', id: number): void;
+  (e: 'run-route', action: string): void;
   (e: 'refresh'): void;
 }>();
 
-const currentWaypoints = computed<Waypoint[]>(() => {
+const currentWaypoints = computed<PresetWaypoint[]>(() => {
   const route = props.routes.find((r) => r.id === props.activeRouteId);
   return route?.waypoints || [];
 });
 
-const statusText = (status: RouteItem['status']) => {
+const statusText = (status?: string) => {
   if (status === 'running') return '执行中';
   if (status === 'done') return '已完成';
+  if (status === 'paused') return '已暂停';
   return '待执行';
 };
 
-const statusColor = (status: RouteItem['status']) => {
+const statusColor = (status?: string) => {
   if (status === 'running') return 'arcoblue';
   if (status === 'done') return 'green';
+  if (status === 'paused') return 'orangered';
   return 'gray';
 };
 </script>
@@ -193,5 +206,14 @@ const statusColor = (status: RouteItem['status']) => {
   margin-top: 2px;
   font-size: 11px;
   color: var(--color-text-3);
+}
+
+.route-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-border-2);
 }
 </style>

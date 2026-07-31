@@ -14,10 +14,8 @@
         playsinline
       />
       <div v-if="!playing" class="placeholder">
-        <div class="tip">
-          {{ streamPlayUrl ? '视频流加载中…' : '请配置 StreamPlayUrl（RTSP 转码后地址）' }}
-        </div>
-        <div v-if="rtspUrl" class="rtsp">RTSP: {{ rtspUrl }}</div>
+        <div class="tip">{{ placeholderTip }}</div>
+        <div v-if="resolvedRtsp" class="rtsp">RTSP: {{ resolvedRtsp }}</div>
         <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
       </div>
     </div>
@@ -25,8 +23,13 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import dayjs from 'dayjs';
+
+const props = defineProps<{
+  playUrl?: string;
+  rtspUrl?: string;
+}>();
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const nowText = ref(dayjs().format('YYYY-MM-DD HH:mm:ss'));
@@ -36,8 +39,17 @@ let clockTimer: number | undefined;
 let flvPlayer: { destroy: () => void } | null = null;
 let hlsPlayer: { destroy: () => void } | null = null;
 
-const rtspUrl = computed(() => window?.globalConfig?.RtspUrl || '');
-const streamPlayUrl = computed(() => window?.globalConfig?.StreamPlayUrl || '');
+const resolvedPlayUrl = computed(
+  () => props.playUrl?.trim() || window?.globalConfig?.StreamPlayUrl || ''
+);
+const resolvedRtsp = computed(
+  () => props.rtspUrl?.trim() || window?.globalConfig?.RtspUrl || ''
+);
+
+const placeholderTip = computed(() => {
+  if (!resolvedPlayUrl.value) return '请选择绑定机械狗的航线，或配置 StreamPlayUrl';
+  return errorMsg.value ? '视频流加载失败' : '视频流加载中…';
+});
 
 const isFlv = (url: string) => /\.flv(\?|$)/i.test(url) || /flv/i.test(url);
 const isHls = (url: string) => /\.m3u8(\?|$)/i.test(url);
@@ -66,7 +78,7 @@ const destroyPlayers = () => {
 };
 
 const startPlay = async () => {
-  const url = streamPlayUrl.value?.trim();
+  const url = resolvedPlayUrl.value;
   const el = videoRef.value;
   if (!url || !el) {
     playing.value = false;
@@ -74,6 +86,7 @@ const startPlay = async () => {
   }
   destroyPlayers();
   errorMsg.value = '';
+  playing.value = false;
   try {
     if (isHls(url)) {
       const canNative = el.canPlayType('application/vnd.apple.mpegurl');
@@ -125,6 +138,10 @@ const startPlay = async () => {
     playing.value = false;
   }
 };
+
+watch(resolvedPlayUrl, () => {
+  startPlay();
+});
 
 onMounted(() => {
   clockTimer = window.setInterval(() => {
