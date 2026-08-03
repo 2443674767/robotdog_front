@@ -11,7 +11,7 @@ export interface LoginData {
 } 
 enum Api {
   //用户
-   Login = '/user/login ',
+   Login = '/user/login',
    Logout = '/user/logout',
    resetPassword = '/user/resetPassword',
    GetUserInfo = '/user/getUserinfo',

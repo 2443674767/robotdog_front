@@ -222,7 +222,7 @@ function createAxios(opt?: Partial<CreateAxiosOptions>) {
     deepMerge(
       {
         authenticationScheme: '',
-        // timeout: 10 * 1000,//超时
+        timeout: 15 * 1000, // 超时，避免后端不可达时登录按钮一直转圈无提示
         // 基础接口地址
         // baseURL: globSetting.apiUrl,
         headers: { 'Content-Type': ContentTypeEnum.JSON },
