@@ -1,13 +1,13 @@
 const domain="";//您的域名//独立部署需要填写Go服务api接口域名(部署在Go目录下可以留空)
-// const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
-const localhost="http://192.168.2.34:8500";
+const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
+// const localhost="http://192.168.2.34:8500";
 window.globalConfig = {
 	Main_url:`${domain}`,//域名
 	Main_url_dev:`${localhost}`,//域名
 	Root_url:`${domain}/admin`,//Api服务器域名
     Root_url_dev:`${localhost}/admin`,//Api服务器域名-开发环境
 	Upload_url:`${domain}/common`,//Api服务器域名
-	Upload_url_dev:`${localhost}/common`,//Api服务器域名-开发环境
+    Upload_url_dev:`${localhost}/common`,//Api服务器域名-开发环境
 	AppTitle_zhCN:"思极智巡",
     AppTitle_zhTW:"思極智巡",
 	AppTitle_enUS:"Sijizhixun",
@@ -30,7 +30,27 @@ window.globalConfig = {
 	MaxSizeVideo:150,//最大上传视频大小,单位M
     //DefaultAccountPassword:["admin","admin888"],//演示账号密码值为：["admin","admin888"]，正式项目请修改为空数组-即值为：[]
     DefaultAccountPassword:["amon", "123"],
-    // 驾驶舱视频：浏览器无法直连 RTSP，需媒体服务器转出 HTTP-FLV / HLS 后再填 StreamPlayUrl
-    RtspUrl: "rtsp://192.168.1.100:554/stream",
-    StreamPlayUrl: "", // 例: http://host/live/cam.live.flv 或 http://host/live/cam.m3u8
+    // ========== 视频：ZLMediaKit HTTP-FLV ==========
+    RtspVisible: "rtsp://10.21.31.111/live/main",
+    RtspThermal: "rtsp://10.21.31.111/live//thermal",
+    StreamPlayUrl: "http://localhost:8080/robotdog/m20_camera.live.flv",
+    StreamPlayUrlVisible: "http://localhost:8080/robotdog/m20_camera.live.flv",
+    StreamPlayUrlThermal: "http://localhost:8080/robotdog/m20_thermal.live.flv",
+    VideoStreams: [
+      {
+        key: "visible",
+        label: "可见光",
+        rtsp: "rtsp://10.21.31.111/live/main",
+        playUrl: "http://localhost:8080/robotdog/m20_camera.live.flv",
+      },
+      {
+        key: "thermal",
+        label: "红外",
+        rtsp: "rtsp://10.21.31.111/live//thermal",
+        playUrl: "http://localhost:8080/robotdog/m20_thermal.live.flv",
+      },
+    ],
+    RtspUrl: "rtsp://10.21.31.111/live/main",
+    WebRtcMode: "go2rtc",
+    WebRtcGateway: "",
 };
