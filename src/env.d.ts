@@ -12,6 +12,23 @@ declare interface Window {
   globalConfig: {
     RtspUrl?: string
     StreamPlayUrl?: string
+    StreamPlayUrlVisible?: string
+    StreamPlayUrlThermal?: string
+    WebRtcMode?: 'go2rtc' | 'whep'
+    WebRtcGateway?: string
+    RtspVisible?: string
+    RtspThermal?: string
+    RtspMain?: string
+    WebRtcSrcVisible?: string
+    WebRtcSrcThermal?: string
+    VideoStreams?: Array<{
+      key: string
+      label: string
+      rtsp?: string
+      playUrl?: string
+      src?: string
+      whepUrl?: string
+    }>
     [key: string]: any
   }
 }
