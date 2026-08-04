@@ -7,7 +7,9 @@ import { defHttp } from '@/utils/http';
 enum Api {
   getRouteList = './robotdog/preset/getRouteList',
   getPlayUrl = './robotdog/preset/getPlayUrl',
+  /** @deprecated 请改用 /robotdog/control/dog/move */
   dogCmd = './robotdog/preset/dogCmd',
+  /** @deprecated 请改用 /robotdog/control/ptz/move */
   ptzCmd = './robotdog/preset/ptzCmd',
   gotoWaypoint = './robotdog/preset/gotoWaypoint',
   runRoute = './robotdog/preset/runRoute',

@@ -28,14 +28,14 @@ import RoutePanel from './components/RoutePanel.vue';
 import VideoPanel from './components/VideoPanel.vue';
 import ControlPanel from './components/ControlPanel.vue';
 import {
-  dogCmd,
   getPlayUrl,
   getPresetRouteList,
+  getTaskStatus,
   gotoWaypoint,
-  ptzCmd,
   runRoute,
   type PresetRoute,
 } from '@/api/robotdog/preset';
+import { dogMove, ptzMove } from '@/api/robotdog/control';
 import { getWaypointList, type WaypointItem } from '@/api/robotdog/waypoint';
 
 const routes = ref<PresetRoute[]>([]);
@@ -45,6 +45,7 @@ const activeWaypointId = ref<number | null>(null);
 const loading = ref(false);
 const playUrl = ref('');
 const rtspUrl = ref('');
+const lastTaskId = ref('');
 
 const activeRoute = computed(() => routes.value.find((r) => r.id === activeRouteId.value) || null);
 const activeDogId = computed(() => activeRoute.value?.dog_id || null);
@@ -125,7 +126,8 @@ const onGotoWaypoint = async (id: number) => {
     return;
   }
   activeWaypointId.value = id;
-  await gotoWaypoint({ dog_id: dogId, waypoint_id: id });
+  const task = await gotoWaypoint({ dog_id: dogId, waypoint_id: id });
+  lastTaskId.value = (task as { task_id?: string })?.task_id || '';
   Message.success('已下发前往航点指令');
   await fetchRoutes();
 };
@@ -135,11 +137,11 @@ const onRunRoute = async (action: string) => {
     Message.warning('请先选择航线');
     return;
   }
-  await runRoute({
+  const task = await runRoute({
     route_id: activeRouteId.value,
     action,
-    ...(activeDogId.value ? { dog_id: activeDogId.value } : {}),
   });
+  lastTaskId.value = (task as { task_id?: string })?.task_id || '';
   const tip =
     ({ start: '已开始执行航线', pause: '航线已暂停', resume: '航线已继续', stop: '航线已停止' } as Record<
       string,
@@ -147,30 +149,64 @@ const onRunRoute = async (action: string) => {
     >)[action] || '航线指令已下发';
   Message.success(tip);
   await fetchRoutes();
+  if (lastTaskId.value) {
+    try {
+      await getTaskStatus({ task_id: lastTaskId.value });
+    } catch {
+      /* 状态查询失败不影响主流程 */
+    }
+  }
 };
 
+/** 机械狗方向：/robotdog/control/dog/move */
 const onDogCmd = async (cmd: string, payload?: Record<string, number | string>) => {
   const dogId = activeDogId.value;
   if (!dogId) {
-    if (cmd !== 'stop' && cmd !== 'speed') {
+    if (cmd !== 'stop') {
       Message.warning('请先选择已绑定机械狗的航线');
     }
     return;
   }
-  await dogCmd({
+  // UI 可能仍发 back，统一映射为文档 direction
+  const directionMap: Record<string, string> = {
+    forward: 'forward',
+    back: 'backward',
+    backward: 'backward',
+    left: 'left',
+    right: 'right',
+    stop: 'stop',
+  };
+  const direction = directionMap[cmd];
+  if (!direction) return;
+
+  await dogMove({
     dog_id: dogId,
-    cmd,
-    speed: Number(payload?.speed ?? 0.6),
+    direction,
+    speed: Number(payload?.speed ?? 0.5),
   });
 };
 
+/** 云台：/robotdog/control/ptz/move */
 const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) => {
-  await ptzCmd({
-    cmd,
-    ...(activeDogId.value ? { dog_id: activeDogId.value } : {}),
+  const cmdMap: Record<string, string> = {
+    up: 'up',
+    down: 'down',
+    left: 'left',
+    right: 'right',
+    stop: 'stop',
+    'zoom-in': 'zoom_in',
+    'zoom-out': 'zoom_out',
+    zoom_in: 'zoom_in',
+    zoom_out: 'zoom_out',
+  };
+  const mapped = cmdMap[cmd];
+  if (!mapped) return;
+
+  await ptzMove({
+    cmd: mapped,
+    speed: Number(payload?.speed ?? 50),
     pan: Number(payload?.yaw ?? 0),
     tilt: Number(payload?.pitch ?? 0),
-    zoom: Number(payload?.zoom ?? 1),
   });
 };
 
