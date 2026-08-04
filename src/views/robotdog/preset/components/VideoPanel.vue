@@ -1,230 +1,88 @@
 <template>
-  <div class="video-panel">
-    <div class="video-hd">
-      <span class="title">实时视频</span>
-      <span class="clock">{{ nowText }}</span>
-    </div>
-    <div class="video-stage">
-      <video
-        v-show="playing"
-        ref="videoRef"
-        class="video-el"
-        muted
-        autoplay
-        playsinline
-      />
-      <div v-if="!playing" class="placeholder">
-        <div class="tip">{{ placeholderTip }}</div>
-        <div v-if="resolvedRtsp" class="rtsp">RTSP: {{ resolvedRtsp }}</div>
-        <div v-if="errorMsg" class="err">{{ errorMsg }}</div>
-      </div>
-    </div>
+  <div class="video-panel-wrap">
+    <LiveStreamPlayer
+      :title="isThermal ? '红外' : '可见光'"
+      :clock="nowText"
+      :play-url="currentUrl"
+    >
+      <template #overlay>
+        <button type="button" class="switch-btn" @click="toggleStream">
+          {{ isThermal ? '切可见光' : '切红外' }}
+        </button>
+      </template>
+    </LiveStreamPlayer>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import dayjs from 'dayjs';
+import LiveStreamPlayer from '@/components/video/LiveStreamPlayer.vue';
 
-const props = defineProps<{
+defineProps<{
   playUrl?: string;
   rtspUrl?: string;
 }>();
 
-const videoRef = ref<HTMLVideoElement | null>(null);
 const nowText = ref(dayjs().format('YYYY-MM-DD HH:mm:ss'));
-const playing = ref(false);
-const errorMsg = ref('');
+const isThermal = ref(false);
 let clockTimer: number | undefined;
-let flvPlayer: { destroy: () => void } | null = null;
-let hlsPlayer: { destroy: () => void } | null = null;
 
-const resolvedPlayUrl = computed(
-  () => props.playUrl?.trim() || window?.globalConfig?.StreamPlayUrl || ''
-);
-const resolvedRtsp = computed(
-  () => props.rtspUrl?.trim() || window?.globalConfig?.RtspUrl || ''
-);
-
-const placeholderTip = computed(() => {
-  if (!resolvedPlayUrl.value) return '请选择绑定机械狗的航线，或配置 StreamPlayUrl';
-  return errorMsg.value ? '视频流加载失败' : '视频流加载中…';
+const visibleUrl = computed(() => {
+  const cfg = window?.globalConfig || {};
+  const fromList = (cfg.VideoStreams || []).find(
+    (s: { key?: string }) => s.key === 'visible' || s.key === 'm20'
+  );
+  return fromList?.playUrl || cfg.StreamPlayUrl || cfg.StreamPlayUrlVisible || '';
 });
 
-const isFlv = (url: string) => /\.flv(\?|$)/i.test(url) || /flv/i.test(url);
-const isHls = (url: string) => /\.m3u8(\?|$)/i.test(url);
-
-const destroyPlayers = () => {
-  if (flvPlayer) {
-    try {
-      flvPlayer.destroy();
-    } catch {
-      /* ignore */
-    }
-    flvPlayer = null;
-  }
-  if (hlsPlayer) {
-    try {
-      hlsPlayer.destroy();
-    } catch {
-      /* ignore */
-    }
-    hlsPlayer = null;
-  }
-  if (videoRef.value) {
-    videoRef.value.removeAttribute('src');
-    videoRef.value.load();
-  }
-};
-
-const startPlay = async () => {
-  const url = resolvedPlayUrl.value;
-  const el = videoRef.value;
-  if (!url || !el) {
-    playing.value = false;
-    return;
-  }
-  destroyPlayers();
-  errorMsg.value = '';
-  playing.value = false;
-  try {
-    if (isHls(url)) {
-      const canNative = el.canPlayType('application/vnd.apple.mpegurl');
-      if (canNative) {
-        el.src = url;
-        await el.play();
-        playing.value = true;
-        return;
-      }
-      const Hls = (await import('hls.js')).default;
-      if (Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(url);
-        hls.attachMedia(el);
-        hls.on(Hls.Events.MANIFEST_PARSED, async () => {
-          try {
-            await el.play();
-            playing.value = true;
-          } catch {
-            errorMsg.value = '自动播放失败';
-            playing.value = false;
-          }
-        });
-        hlsPlayer = hls;
-        return;
-      }
-      errorMsg.value = '当前浏览器不支持 HLS';
-      return;
-    }
-    if (isFlv(url)) {
-      const mpegts = (await import('mpegts.js')).default;
-      if (mpegts.getFeatureList().mseLivePlayback) {
-        const player = mpegts.createPlayer({ type: 'flv', isLive: true, url });
-        player.attachMediaElement(el);
-        player.load();
-        await player.play();
-        flvPlayer = player;
-        playing.value = true;
-        return;
-      }
-      errorMsg.value = '当前浏览器不支持 FLV';
-      return;
-    }
-    el.src = url;
-    await el.play();
-    playing.value = true;
-  } catch (e) {
-    errorMsg.value = (e as Error)?.message || '视频播放失败';
-    playing.value = false;
-  }
-};
-
-watch(resolvedPlayUrl, () => {
-  startPlay();
+const thermalUrl = computed(() => {
+  const cfg = window?.globalConfig || {};
+  const fromList = (cfg.VideoStreams || []).find(
+    (s: { key?: string }) => s.key === 'thermal'
+  );
+  return fromList?.playUrl || cfg.StreamPlayUrlThermal || '';
 });
+
+const currentUrl = computed(() => (isThermal.value ? thermalUrl.value : visibleUrl.value));
+
+const toggleStream = () => {
+  isThermal.value = !isThermal.value;
+};
 
 onMounted(() => {
   clockTimer = window.setInterval(() => {
     nowText.value = dayjs().format('YYYY-MM-DD HH:mm:ss');
   }, 1000);
-  startPlay();
 });
 
 onBeforeUnmount(() => {
   if (clockTimer) window.clearInterval(clockTimer);
-  destroyPlayers();
 });
 </script>
 
 <style lang="less" scoped>
-.video-panel {
+.video-panel-wrap {
   height: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: #0b1220;
-  border: 1px solid var(--color-border-2);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
-.video-hd {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(22, 119, 255, 0.16);
-  border-bottom: 1px solid rgba(64, 158, 255, 0.25);
-
-  .title {
-    color: #e8f3ff;
-    font-size: 14px;
-    font-weight: 600;
-  }
-  .clock {
-    color: #7ed0ff;
-    font-variant-numeric: tabular-nums;
-    font-size: 13px;
-  }
-}
-
-.video-stage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: #020814;
-}
-
-.video-el {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
-.placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 20px;
-  text-align: center;
-  color: rgba(186, 220, 255, 0.85);
-  font-size: 13px;
-}
-
-.rtsp {
+.switch-btn {
+  appearance: none;
+  border: 1px solid rgba(126, 208, 255, 0.55);
+  background: rgba(6, 20, 40, 0.78);
+  color: #e8f3ff;
   font-size: 12px;
-  color: rgba(126, 208, 255, 0.7);
-  word-break: break-all;
-}
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.15s;
 
-.err {
-  color: #ff9a9a;
-  font-size: 12px;
+  &:hover {
+    border-color: #7ed0ff;
+    background: rgba(22, 119, 255, 0.45);
+  }
 }
 </style>
