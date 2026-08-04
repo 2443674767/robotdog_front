@@ -95,6 +95,7 @@
       v-model:visible="routeModal.visible"
       :title="routeModal.id ? '编辑航线' : '新建航线'"
       :ok-loading="routeModal.saving"
+      width="860px"
       @ok="saveRouteItem"
       unmount-on-close
     >
@@ -105,10 +106,8 @@
             <a-option v-for="d in dogs" :key="d.id" :value="d.id">{{ d.name }}</a-option>
           </a-select>
         </a-form-item>
-        <a-form-item label="航点顺序">
-          <a-select v-model="routeForm.waypoint_ids" multiple placeholder="选择航点">
-            <a-option v-for="w in waypoints" :key="w.id" :value="w.id">{{ w.name }}</a-option>
-          </a-select>
+        <a-form-item label="子任务流程" required>
+          <RouteTaskTable ref="taskTableRef" v-model="routeForm.tasks" />
         </a-form-item>
         <a-form-item label="备注"><a-input v-model="routeForm.remark" /></a-form-item>
       </a-form>
@@ -123,11 +122,13 @@ import PointCloudMap from './components/PointCloudMap.vue';
 import DogConfigList from './components/DogConfigList.vue';
 import WaypointList from './components/WaypointList.vue';
 import RouteList from './components/RouteList.vue';
+import RouteTaskTable from './components/RouteTaskTable.vue';
 import {
   delDog,
   delRoute,
   delWaypoint,
   getDogList,
+  getRouteDetail,
   getRouteList,
   getWaypointList,
   publishRoute,
@@ -136,6 +137,7 @@ import {
   saveWaypoint as saveWaypointApi,
   type DogItem,
   type RouteItem,
+  type RouteTaskItem,
   type WaypointItem,
 } from '@/api/robotdog/waypoint';
 
@@ -176,17 +178,22 @@ const wpForm = reactive({
 });
 
 const routeModal = reactive({ visible: false, id: null as number | null, saving: false });
+const taskTableRef = ref<InstanceType<typeof RouteTaskTable> | null>(null);
 const routeForm = reactive<{
   name: string;
   dog_id: number | null;
-  waypoint_ids: number[];
   remark: string;
+  tasks: RouteTaskItem[];
 }>({
   name: '',
   dog_id: null,
-  waypoint_ids: [],
   remark: '',
+  tasks: [],
 });
+
+const emptyTasks = (): RouteTaskItem[] => [
+  { seq: 1, action: '', wait_sec: 0, params: {} },
+];
 
 const fetchDogs = async () => {
   loading.dog = true;
@@ -221,6 +228,7 @@ const fetchRoutes = async () => {
     routes.value = (res?.list || []).map((item) => ({
       ...item,
       waypoint_ids: item.waypoint_ids || [],
+      tasks: item.tasks || [],
     }));
     if (!activeRouteId.value && routes.value.length) {
       activeRouteId.value = routes.value[0].id;
@@ -343,13 +351,33 @@ const openRouteModal = async (id?: number) => {
     const item = routes.value.find((r) => r.id === id)!;
     routeForm.name = item.name;
     routeForm.dog_id = item.dog_id ?? null;
-    routeForm.waypoint_ids = [...(item.waypoint_ids || [])];
     routeForm.remark = item.remark || '';
+    let tasks = item.tasks ? [...item.tasks] : [];
+    try {
+      const detail = await getRouteDetail({ id });
+      const data = detail as {
+        route?: RouteItem;
+        tasks?: RouteTaskItem[];
+      };
+      if (data?.route) {
+        routeForm.name = data.route.name || routeForm.name;
+        routeForm.dog_id = data.route.dog_id ?? routeForm.dog_id;
+        routeForm.remark = data.route.remark || routeForm.remark;
+      }
+      if (Array.isArray(data?.tasks) && data.tasks.length) {
+        tasks = data.tasks;
+      } else if (Array.isArray((detail as RouteItem)?.tasks)) {
+        tasks = (detail as RouteItem).tasks || [];
+      }
+    } catch {
+      // 详情失败时用列表数据
+    }
+    routeForm.tasks = tasks.length ? tasks : emptyTasks();
   } else {
     routeForm.name = '';
     routeForm.dog_id = activeDogId.value;
-    routeForm.waypoint_ids = activeWaypointId.value ? [activeWaypointId.value] : [];
     routeForm.remark = '';
+    routeForm.tasks = emptyTasks();
   }
   routeModal.visible = true;
 };
@@ -357,11 +385,17 @@ const openRouteModal = async (id?: number) => {
 const saveRouteItem = async () => {
   if (!routeForm.name.trim()) {
     Message.warning('请填写航线名称');
-    return;
+    return Promise.reject();
   }
-  if (!routeForm.waypoint_ids.length) {
-    Message.warning('请至少选择一个航点');
-    return;
+  if (taskTableRef.value && !taskTableRef.value.validate()) {
+    return Promise.reject();
+  }
+  const tasks = (taskTableRef.value?.getTasks() || routeForm.tasks)
+    .filter((t) => t.action)
+    .map((t, i) => ({ ...t, seq: i + 1 }));
+  if (!tasks.length) {
+    Message.warning('请至少配置一个子任务功能');
+    return Promise.reject();
   }
   routeModal.saving = true;
   try {
@@ -369,13 +403,16 @@ const saveRouteItem = async () => {
       ...(routeModal.id ? { id: routeModal.id } : {}),
       name: routeForm.name,
       dog_id: routeForm.dog_id,
-      waypoint_ids: routeForm.waypoint_ids,
       remark: routeForm.remark,
       status: 'draft',
+      waypoint_ids: [],
+      tasks,
     });
     Message.success(routeModal.id ? '航线已更新' : '航线已创建');
     routeModal.visible = false;
     await fetchRoutes();
+  } catch (e) {
+    return Promise.reject(e);
   } finally {
     routeModal.saving = false;
   }

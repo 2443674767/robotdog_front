@@ -53,6 +53,29 @@ export interface WaypointItem {
   remark?: string;
 }
 
+export interface RouteTaskParams {
+  map_name?: string;
+  [key: string]: unknown;
+}
+
+export type RouteTaskAction =
+  | 'lie'
+  | 'stand'
+  | 'navigate'
+  | 'line_navigate'
+  | 'photo'
+  | 'switch_map'
+  | 'relocalize'
+  | 'voice'
+  | string;
+
+export interface RouteTaskItem {
+  seq: number;
+  action: RouteTaskAction;
+  wait_sec: number;
+  params?: RouteTaskParams;
+}
+
 export interface RouteItem {
   id: number;
   tenant_id?: number;
@@ -62,7 +85,18 @@ export interface RouteItem {
   run_status?: string;
   remark?: string;
   waypoint_ids?: number[];
+  tasks?: RouteTaskItem[];
   updated_at?: string;
+}
+
+export interface SaveRouteParams {
+  id?: number;
+  name: string;
+  dog_id?: number | null;
+  status?: string;
+  remark?: string;
+  waypoint_ids?: number[];
+  tasks?: RouteTaskItem[];
 }
 
 export interface PageResult<T> {
@@ -115,7 +149,7 @@ export function getRouteList(params?: object) {
   );
 }
 
-export function saveRoute(params: object) {
+export function saveRoute(params: SaveRouteParams | object) {
   return defHttp.post({ url: Api.saveRoute, params }, { errorMessageMode: 'message' });
 }
 
