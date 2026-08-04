@@ -53,4 +53,7 @@ window.globalConfig = {
     RtspUrl: "rtsp://10.21.31.111/live/main",
     WebRtcMode: "go2rtc",
     WebRtcGateway: "",
+    // ========== 设备地图服务（仅 IP/端口；接口路径在 robotdog/waypoint API 内）==========
+    RobotMapApiIp: "10.21.31.100",
+    RobotMapApiPort: 9000,
 };

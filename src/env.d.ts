@@ -29,6 +29,8 @@ declare interface Window {
       src?: string
       whepUrl?: string
     }>
+    RobotMapApiIp?: string
+    RobotMapApiPort?: number
     [key: string]: any
   }
 }
