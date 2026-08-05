@@ -17,11 +17,6 @@ export default mergeConfig(
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/admin/, '')//这里的/需要转义
         },
-        '/robot-map-api': {
-          target: 'http://10.21.31.100:9000',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/robot-map-api/, ''),
-        },
       }
     },
     plugins: [
