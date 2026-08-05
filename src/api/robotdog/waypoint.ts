@@ -55,6 +55,8 @@ export interface WaypointItem {
 
 export interface RouteTaskParams {
   map_name?: string;
+  /** navigate 子任务必填，关联航点 ID */
+  waypoint_id?: number;
   [key: string]: unknown;
 }
 

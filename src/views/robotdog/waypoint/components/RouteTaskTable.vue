@@ -16,6 +16,10 @@
         v-model="innerList"
         :animation="180"
         handle=".drag-handle"
+        :force-fallback="true"
+        fallback-class="route-task-fallback"
+        :fallback-on-body="true"
+        :bubble-scroll="true"
         @end="renumber"
       >
         <div v-for="(row, index) in innerList" :key="row.uid" class="trow">
@@ -48,6 +52,19 @@
               >
                 <a-option v-for="m in mapOptions" :key="m" :value="m">{{ m }}</a-option>
               </a-select>
+              <a-select
+                v-if="row.action === 'navigate'"
+                :model-value="row.waypoint_id"
+                placeholder="选择航点"
+                allow-search
+                allow-clear
+                style="min-width: 140px; flex: 1"
+                @change="(v: number) => onWaypointSelect(row, v)"
+              >
+                <a-option v-for="wp in waypoints" :key="wp.id" :value="wp.id">
+                  {{ wp.name || `航点#${wp.id}` }}
+                </a-option>
+              </a-select>
             </div>
           </div>
           <div class="col col-wait">
@@ -78,13 +95,14 @@ import { onMounted, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import { getDeviceMapData } from '@/api/robotdog/deviceMap';
-import type { RouteTaskItem } from '@/api/robotdog/waypoint';
+import type { RouteTaskItem, RouteTaskParams, WaypointItem } from '@/api/robotdog/waypoint';
 
 export type TaskRow = {
   uid: string;
   action: string;
   wait_sec: number;
   map_name?: string;
+  waypoint_id?: number;
 };
 
 const ACTION_OPTIONS = [
@@ -98,9 +116,15 @@ const ACTION_OPTIONS = [
   { value: 'voice', label: '语音指令' },
 ];
 
-const props = defineProps<{
-  modelValue?: RouteTaskItem[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue?: RouteTaskItem[];
+    waypoints?: WaypointItem[];
+  }>(),
+  {
+    waypoints: () => [],
+  }
+);
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: RouteTaskItem[]): void;
@@ -114,6 +138,7 @@ const createEmptyRow = (): TaskRow => ({
   action: '',
   wait_sec: 0,
   map_name: undefined,
+  waypoint_id: undefined,
 });
 
 const toRows = (tasks?: RouteTaskItem[]): TaskRow[] => {
@@ -123,14 +148,21 @@ const toRows = (tasks?: RouteTaskItem[]): TaskRow[] => {
     action: t.action || '',
     wait_sec: Number(t.wait_sec) || 0,
     map_name: t.params?.map_name,
+    waypoint_id:
+      t.params?.waypoint_id != null && Number(t.params.waypoint_id) > 0
+        ? Number(t.params.waypoint_id)
+        : undefined,
   }));
 };
 
 const toTasks = (rows: TaskRow[]): RouteTaskItem[] =>
   rows.map((row, i) => {
-    const params: Record<string, string> = {};
+    const params: RouteTaskParams = {};
     if (row.action === 'switch_map' && row.map_name) {
       params.map_name = row.map_name;
+    }
+    if (row.action === 'navigate' && row.waypoint_id != null) {
+      params.waypoint_id = Number(row.waypoint_id);
     }
     return {
       seq: i + 1,
@@ -192,11 +224,19 @@ const onActionSelect = (row: TaskRow, v: string) => {
   } else {
     ensureMapsLoaded();
   }
+  if (row.action !== 'navigate') {
+    row.waypoint_id = undefined;
+  }
   syncOut();
 };
 
 const onMapSelect = (row: TaskRow, v: string) => {
   row.map_name = v || undefined;
+  syncOut();
+};
+
+const onWaypointSelect = (row: TaskRow, v: number) => {
+  row.waypoint_id = v != null && Number(v) > 0 ? Number(v) : undefined;
   syncOut();
 };
 
@@ -216,7 +256,8 @@ watch(
         (r, i) =>
           r.action === innerList.value[i].action &&
           r.wait_sec === innerList.value[i].wait_sec &&
-          (r.map_name || '') === (innerList.value[i].map_name || '')
+          (r.map_name || '') === (innerList.value[i].map_name || '') &&
+          (r.waypoint_id || 0) === (innerList.value[i].waypoint_id || 0)
       );
     if (!sameActions) {
       innerList.value = next;
@@ -244,6 +285,10 @@ defineExpose({
         Message.warning(`子任务 ${t.seq}：请选择地图`);
         return false;
       }
+      if (t.action === 'navigate' && !t.params?.waypoint_id) {
+        Message.warning(`子任务 ${t.seq}：请选择航点`);
+        return false;
+      }
     }
     return true;
   },
@@ -268,7 +313,7 @@ defineExpose({
 .table-wrap {
   border: 1px solid var(--color-border-2);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--color-bg-2);
 }
 
@@ -294,8 +339,14 @@ defineExpose({
 }
 
 .drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 28px;
   cursor: grab;
   user-select: none;
+  touch-action: none;
   color: var(--color-text-3);
   letter-spacing: -2px;
   font-size: 14px;

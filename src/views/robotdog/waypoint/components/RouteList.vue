@@ -26,10 +26,17 @@
             <div class="meta">绑定机械狗：{{ dogName(item.dog_id) }}</div>
             <div class="meta">
               航点 {{ item.waypoint_ids?.length || 0 }} 个
+              <span v-if="item.run_status"> · 执行 {{ runStatusText(item.run_status) }}</span>
               <span v-if="item.updated_at"> · 更新 {{ item.updated_at }}</span>
             </div>
             <div class="ops">
               <a-button size="mini" type="text" @click.stop="emit('edit', item.id)">编辑</a-button>
+              <a-button
+                size="mini"
+                type="text"
+                :loading="startingRouteId === item.id"
+                @click.stop="emit('start', item.id)"
+              >执行</a-button>
               <a-button
                 v-if="item.status !== 'published'"
                 size="mini"
@@ -58,6 +65,7 @@ const props = defineProps<{
   dogs: DogItem[];
   activeId: number | null;
   loading?: boolean;
+  startingRouteId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -66,6 +74,7 @@ const emit = defineEmits<{
   (e: 'edit', id: number): void;
   (e: 'publish', id: number): void;
   (e: 'remove', id: number): void;
+  (e: 'start', id: number): void;
 }>();
 
 const collapsed = ref(false);
@@ -78,6 +87,9 @@ const statusText = (s?: string) =>
 
 const statusColor = (s?: string) =>
   ({ draft: 'gray', ready: 'orangered', published: 'green' }[s || ''] || 'gray');
+
+const runStatusText = (s?: string) =>
+  ({ running: '运行中', completed: '已完成', failed: '失败', idle: '空闲' }[s || ''] || s || '-');
 </script>
 
 <style lang="less" scoped>
