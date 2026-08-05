@@ -67,27 +67,10 @@
       unmount-on-close
     >
       <a-form :model="wpForm" layout="vertical">
-        <a-form-item label="名称" required><a-input v-model="wpForm.name" /></a-form-item>
-        <a-row :gutter="12">
-          <a-col :span="8">
-            <a-form-item label="X">
-              <a-input-number v-model="wpForm.x" :precision="2" :step="0.01" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="Y">
-              <a-input-number v-model="wpForm.y" :precision="2" :step="0.01" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="Z">
-              <a-input-number v-model="wpForm.z" :precision="2" :step="0.01" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="Yaw"><a-input-number v-model="wpForm.yaw" :min="-180" :max="180" style="width: 100%" /></a-form-item>
-        <a-form-item label="地图ID"><a-input-number v-model="wpForm.map_id" style="width: 100%" /></a-form-item>
-        <a-form-item label="备注"><a-input v-model="wpForm.remark" /></a-form-item>
+        <a-form-item label="名称" required>
+          <a-input v-model="wpForm.name" placeholder="请输入航点名称" allow-clear />
+        </a-form-item>
+        <div class="wp-tip">坐标 X/Y/Z 与航向由后端根据机械狗实时位置自动采集，无需填写</div>
       </a-form>
     </a-modal>
 
@@ -169,12 +152,6 @@ const dogForm = reactive({
 const wpModal = reactive({ visible: false, id: null as number | null, saving: false });
 const wpForm = reactive({
   name: '',
-  x: 0,
-  y: 0,
-  z: 0,
-  yaw: 0,
-  map_id: undefined as number | undefined,
-  remark: '',
 });
 
 const routeModal = reactive({ visible: false, id: null as number | null, saving: false });
@@ -289,25 +266,9 @@ const openWaypointModal = (id?: number) => {
   wpModal.id = id || null;
   if (id) {
     const item = waypoints.value.find((w) => w.id === id)!;
-    Object.assign(wpForm, {
-      name: item.name,
-      x: round2(item.x),
-      y: round2(item.y),
-      z: round2(item.z),
-      yaw: item.yaw ?? 0,
-      map_id: item.map_id,
-      remark: item.remark || '',
-    });
+    wpForm.name = item.name || '';
   } else {
-    Object.assign(wpForm, {
-      name: `航点 WP-${waypoints.value.length + 1}`,
-      x: 0,
-      y: 0,
-      z: 0,
-      yaw: 0,
-      map_id: dogs.value.find((d) => d.id === activeDogId.value)?.map_id,
-      remark: '',
-    });
+    wpForm.name = `航点 WP-${waypoints.value.length + 1}`;
   }
   wpModal.visible = true;
 };
@@ -315,20 +276,29 @@ const openWaypointModal = (id?: number) => {
 const saveWaypointItem = async () => {
   if (!wpForm.name.trim()) {
     Message.warning('请填写航点名称');
-    return;
+    return Promise.reject();
   }
+  const dog = dogs.value.find((d) => d.id === activeDogId.value);
   wpModal.saving = true;
   try {
-    await saveWaypointApi({
+    const res = await saveWaypointApi({
       ...(wpModal.id ? { id: wpModal.id } : {}),
-      ...wpForm,
-      x: round2(wpForm.x),
-      y: round2(wpForm.y),
-      z: round2(wpForm.z),
+      name: wpForm.name.trim(),
+      ...(activeDogId.value ? { dog_id: activeDogId.value } : {}),
+      ...(dog?.map_id ? { map_id: dog.map_id } : {}),
     });
-    Message.success(wpModal.id ? '航点已更新' : '航点已新增');
+    const saved = res as WaypointItem | undefined;
+    if (saved && (saved.x != null || saved.y != null)) {
+      Message.success(
+        `${wpModal.id ? '航点已更新' : '航点已新增'}（位置 ${round2(saved.x)}, ${round2(saved.y)}, ${round2(saved.z)}）`
+      );
+    } else {
+      Message.success(wpModal.id ? '航点已更新' : '航点已新增');
+    }
     wpModal.visible = false;
     await fetchWaypoints();
+  } catch (e) {
+    return Promise.reject(e);
   } finally {
     wpModal.saving = false;
   }
@@ -470,6 +440,13 @@ export default {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.wp-tip {
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--color-text-3);
+  line-height: 1.5;
 }
 
 @media screen and (max-width: 1100px) {
