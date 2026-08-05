@@ -31,12 +31,17 @@
             </div>
             <div class="ops">
               <a-button size="mini" type="text" @click.stop="emit('edit', item.id)">编辑</a-button>
-              <a-button
-                size="mini"
-                type="text"
-                :loading="startingRouteId === item.id"
-                @click.stop="emit('start', item.id)"
-              >执行</a-button>
+              <a-popconfirm
+                :content="`确定执行航线「${item.name}」？`"
+                @ok="emit('start', item.id)"
+              >
+                <a-button
+                  size="mini"
+                  type="text"
+                  :loading="startingRouteId === item.id"
+                  @click.stop
+                >执行</a-button>
+              </a-popconfirm>
               <a-button
                 v-if="item.status !== 'published'"
                 size="mini"
