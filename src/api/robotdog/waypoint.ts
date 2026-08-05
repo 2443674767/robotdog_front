@@ -44,6 +44,7 @@ export interface DogItem {
 export interface WaypointItem {
   id: number;
   tenant_id?: number;
+  dog_id?: number;
   map_id?: number;
   name: string;
   x?: number;

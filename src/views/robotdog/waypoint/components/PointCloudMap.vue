@@ -13,7 +13,7 @@
       </div>
     </div>
     <div ref="hostRef" class="map-canvas" />
-    <div class="map-tip">拖拽旋转 · 滚轮缩放 · 右键平移 · 选中航线显示绿色动态路径</div>
+    <div class="map-tip">拖拽旋转 · 滚轮缩放 · 右键平移 · 选中航线后显示其航点与绿色路径</div>
   </div>
 </template>
 

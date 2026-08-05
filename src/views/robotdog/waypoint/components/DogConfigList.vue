@@ -57,7 +57,7 @@ const emit = defineEmits<{
   (e: 'remove', id: number): void;
 }>();
 
-const collapsed = ref(false);
+const collapsed = ref(true);
 
 const statusText = (s?: string) =>
   ({ online: '在线', offline: '离线', busy: '任务中' }[s || ''] || s || '-');

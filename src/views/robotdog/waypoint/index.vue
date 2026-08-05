@@ -2,7 +2,7 @@
   <div class="waypoint-page">
     <PointCloudMap
       class="map"
-      :waypoints="waypoints"
+      :waypoints="mapWaypoints"
       :active-waypoint-id="activeWaypointId"
       :route-waypoint-ids="activeRouteWaypointIds"
     />
@@ -12,7 +12,7 @@
         :list="dogs"
         :active-id="activeDogId"
         :loading="loading.dog"
-        @select="(id) => (activeDogId = id)"
+        @select="onSelectDog"
         @add="openDogModal()"
         @edit="openDogModal"
         @remove="removeDog"
@@ -34,7 +34,7 @@
         :active-id="activeRouteId"
         :loading="loading.route"
         :starting-route-id="startingRouteId"
-        @select="(id) => (activeRouteId = id)"
+        @select="onSelectRoute"
         @add="openRouteModal()"
         @edit="openRouteModal"
         @publish="publishRouteItem"
@@ -133,6 +133,7 @@ import {
   type WaypointItem,
 } from '@/api/robotdog/waypoint';
 import { startRoute } from '@/api/robotdog/task';
+import { getRouteWaypointIds } from './utils/routeWaypoints';
 
 const dogs = ref<DogItem[]>([]);
 const waypoints = ref<WaypointItem[]>([]);
@@ -143,9 +144,18 @@ const activeWaypointId = ref<number | null>(null);
 const activeRouteId = ref<number | null>(null);
 
 /** 当前选中航线的航点顺序（用于地图连线） */
-const activeRouteWaypointIds = computed(() => {
-  const route = routes.value.find((r) => r.id === activeRouteId.value);
-  return route?.waypoint_ids || [];
+const activeRoute = computed(() => routes.value.find((r) => r.id === activeRouteId.value) || null);
+
+const activeRouteWaypointIds = computed(() => getRouteWaypointIds(activeRoute.value));
+
+/** 点云图仅展示选中航线内的航点；未选航线时不显示 */
+const mapWaypoints = computed(() => {
+  if (!activeRouteId.value) return [];
+  const ids = activeRouteWaypointIds.value;
+  if (!ids.length) return [];
+  return ids
+    .map((id) => waypoints.value.find((w) => w.id === id))
+    .filter(Boolean) as WaypointItem[];
 });
 
 const loading = reactive({ dog: false, waypoint: false, route: false });
@@ -186,8 +196,11 @@ const emptyTasks = (): RouteTaskItem[] => [
 const fetchDogs = async () => {
   loading.dog = true;
   try {
-    const res = await getDogList({ page: 1, limit: 100 });
+    const res = await getDogList({ page: 1, limit: 100, mine: 1 });
     dogs.value = res?.list || [];
+    if (activeDogId.value && !dogs.value.some((d) => d.id === activeDogId.value)) {
+      activeDogId.value = null;
+    }
     if (!activeDogId.value && dogs.value.length) {
       activeDogId.value = dogs.value[0].id;
     }
@@ -197,12 +210,20 @@ const fetchDogs = async () => {
 };
 
 const fetchWaypoints = async () => {
+  if (!activeDogId.value) {
+    waypoints.value = [];
+    return;
+  }
   loading.waypoint = true;
   try {
-    const res = await getWaypointList({ page: 1, limit: 200 });
+    const res = await getWaypointList({
+      page: 1,
+      limit: 200,
+      dog_id: activeDogId.value,
+    });
     waypoints.value = res?.list || [];
-    if (!activeWaypointId.value && waypoints.value.length) {
-      activeWaypointId.value = waypoints.value[0].id;
+    if (activeWaypointId.value && !waypoints.value.some((w) => w.id === activeWaypointId.value)) {
+      activeWaypointId.value = null;
     }
   } finally {
     loading.waypoint = false;
@@ -210,20 +231,42 @@ const fetchWaypoints = async () => {
 };
 
 const fetchRoutes = async () => {
+  if (!activeDogId.value) {
+    routes.value = [];
+    return;
+  }
   loading.route = true;
   try {
-    const res = await getRouteList({ page: 1, limit: 100 });
+    const res = await getRouteList({ page: 1, limit: 100, dog_id: activeDogId.value });
     routes.value = (res?.list || []).map((item) => ({
       ...item,
       waypoint_ids: item.waypoint_ids || [],
       tasks: item.tasks || [],
     }));
-    if (!activeRouteId.value && routes.value.length) {
-      activeRouteId.value = routes.value[0].id;
+    if (activeRouteId.value && !routes.value.some((r) => r.id === activeRouteId.value)) {
+      activeRouteId.value = null;
     }
   } finally {
     loading.route = false;
   }
+};
+
+const reloadDogScopedData = async () => {
+  activeWaypointId.value = null;
+  activeRouteId.value = null;
+  await Promise.all([fetchWaypoints(), fetchRoutes()]);
+};
+
+const onSelectDog = async (id: number) => {
+  if (activeDogId.value === id) return;
+  activeDogId.value = id;
+  await reloadDogScopedData();
+};
+
+const onSelectRoute = (id: number) => {
+  activeRouteId.value = id;
+  const ids = getRouteWaypointIds(routes.value.find((r) => r.id === id));
+  activeWaypointId.value = ids[0] ?? null;
 };
 
 const openDogModal = (id?: number) => {
@@ -248,6 +291,7 @@ const saveDogItem = async () => {
     Message.warning('请填写名称');
     return;
   }
+  const prevDogId = activeDogId.value;
   dogModal.saving = true;
   try {
     await saveDogApi({
@@ -257,6 +301,9 @@ const saveDogItem = async () => {
     Message.success(dogModal.id ? '机械狗配置已更新' : '机械狗配置已新增');
     dogModal.visible = false;
     await fetchDogs();
+    if (activeDogId.value && activeDogId.value !== prevDogId) {
+      await reloadDogScopedData();
+    }
   } finally {
     dogModal.saving = false;
   }
@@ -267,8 +314,14 @@ const saveDog = async () => saveDogItem();
 const removeDog = async (id: number) => {
   await delDog({ id });
   Message.success('已删除');
-  if (activeDogId.value === id) activeDogId.value = null;
+  const wasActive = activeDogId.value === id;
+  if (wasActive) {
+    activeDogId.value = null;
+  }
   await fetchDogs();
+  if (wasActive) {
+    await reloadDogScopedData();
+  }
 };
 
 const round2 = (n?: number | null) => Number(Number(n ?? 0).toFixed(2));
@@ -426,7 +479,10 @@ const removeRoute = async (id: number) => {
 };
 
 onMounted(async () => {
-  await Promise.all([fetchDogs(), fetchWaypoints(), fetchRoutes()]);
+  await fetchDogs();
+  if (activeDogId.value) {
+    await Promise.all([fetchWaypoints(), fetchRoutes()]);
+  }
 });
 </script>
 

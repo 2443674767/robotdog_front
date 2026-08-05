@@ -25,7 +25,7 @@
             </div>
             <div class="meta">绑定机械狗：{{ dogName(item.dog_id) }}</div>
             <div class="meta">
-              航点 {{ item.waypoint_ids?.length || 0 }} 个
+              航点 {{ routeWaypointCount(item) }} 个
               <span v-if="item.run_status"> · 执行 {{ runStatusText(item.run_status) }}</span>
               <span v-if="item.updated_at"> · 更新 {{ item.updated_at }}</span>
             </div>
@@ -64,6 +64,7 @@
 import { ref } from 'vue';
 import { IconDown } from '@arco-design/web-vue/es/icon';
 import type { DogItem, RouteItem } from '@/api/robotdog/waypoint';
+import { routeWaypointCount } from '../utils/routeWaypoints';
 
 const props = defineProps<{
   list: RouteItem[];
@@ -82,7 +83,7 @@ const emit = defineEmits<{
   (e: 'start', id: number): void;
 }>();
 
-const collapsed = ref(false);
+const collapsed = ref(true);
 
 const dogName = (dogId?: number | null) =>
   props.dogs.find((d) => d.id === dogId)?.name || '未绑定';

@@ -54,7 +54,7 @@ const emit = defineEmits<{
   (e: 'remove', id: number): void;
 }>();
 
-const collapsed = ref(false);
+const collapsed = ref(true);
 </script>
 
 <style lang="less" scoped>
