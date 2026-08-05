@@ -33,10 +33,12 @@
         :dogs="dogs"
         :active-id="activeRouteId"
         :loading="loading.route"
+        :starting-route-id="startingRouteId"
         @select="(id) => (activeRouteId = id)"
         @add="openRouteModal()"
         @edit="openRouteModal"
         @publish="publishRouteItem"
+        @start="startRouteItem"
         @remove="removeRoute"
       />
     </div>
@@ -45,6 +47,7 @@
       v-model:visible="dogModal.visible"
       :title="dogModal.id ? '编辑机械狗' : '新增机械狗'"
       :ok-loading="dogModal.saving"
+      draggable
       @ok="saveDog"
       unmount-on-close
     >
@@ -63,6 +66,7 @@
       v-model:visible="wpModal.visible"
       :title="wpModal.id ? '编辑航点' : '新增航点'"
       :ok-loading="wpModal.saving"
+      draggable
       @ok="saveWaypointItem"
       unmount-on-close
     >
@@ -79,6 +83,7 @@
       :title="routeModal.id ? '编辑航线' : '新建航线'"
       :ok-loading="routeModal.saving"
       width="860px"
+      draggable
       @ok="saveRouteItem"
       unmount-on-close
     >
@@ -90,7 +95,11 @@
           </a-select>
         </a-form-item>
         <a-form-item label="子任务流程" required>
-          <RouteTaskTable ref="taskTableRef" v-model="routeForm.tasks" />
+          <RouteTaskTable
+            ref="taskTableRef"
+            v-model="routeForm.tasks"
+            :waypoints="waypoints"
+          />
         </a-form-item>
         <a-form-item label="备注"><a-input v-model="routeForm.remark" /></a-form-item>
       </a-form>
@@ -123,6 +132,7 @@ import {
   type RouteTaskItem,
   type WaypointItem,
 } from '@/api/robotdog/waypoint';
+import { startRoute } from '@/api/robotdog/task';
 
 const dogs = ref<DogItem[]>([]);
 const waypoints = ref<WaypointItem[]>([]);
@@ -139,6 +149,7 @@ const activeRouteWaypointIds = computed(() => {
 });
 
 const loading = reactive({ dog: false, waypoint: false, route: false });
+const startingRouteId = ref<number | null>(null);
 
 const dogModal = reactive({ visible: false, id: null as number | null, saving: false });
 const dogForm = reactive({
@@ -392,6 +403,19 @@ const publishRouteItem = async (id: number) => {
   await publishRoute({ id });
   Message.success('航线已发布');
   await fetchRoutes();
+};
+
+const startRouteItem = async (id: number) => {
+  if (startingRouteId.value != null) return;
+  startingRouteId.value = id;
+  try {
+    const res = await startRoute({ route_id: id });
+    const taskId = res?.task_id || '';
+    Message.success(taskId ? `航线执行任务已启动（${taskId}）` : '航线执行任务已启动');
+    await fetchRoutes();
+  } finally {
+    startingRouteId.value = null;
+  }
 };
 
 const removeRoute = async (id: number) => {
