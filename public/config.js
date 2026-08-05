@@ -1,7 +1,7 @@
 const domain="";//您的域名//独立部署需要填写Go服务api接口域名(部署在Go目录下可以留空)
-// const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
+const localhost="http://localhost:8500";//访问本地的域名和端口，如果您改变Go服务端口，请自行修改
 // const localhost="http://192.168.2.34:8500";
-const localhost="http://10.21.41.241:8500";
+// const localhost="http://10.21.41.241:8500";
 window.globalConfig = {
 	Main_url:`${domain}`,//域名
 	Main_url_dev:`${localhost}`,//域名
