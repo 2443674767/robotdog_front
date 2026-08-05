@@ -22,6 +22,7 @@ enum Api {
   getPointCloud = './robotdog/waypoint/getPointCloud',
   getMapList = './robotdog/waypoint/getMapList',
   uploadMap = './robotdog/waypoint/uploadMap',
+  getNavData = './robotdog/waypoint/getNavData',
 }
 
 export interface DogItem {
@@ -58,6 +59,8 @@ export interface RouteTaskParams {
   map_name?: string;
   /** navigate 子任务必填，关联航点 ID */
   waypoint_id?: number;
+  /** relocalize 子任务必填，导航点位 ID（getNavData 列表序号，从 1 起） */
+  id?: number;
   [key: string]: unknown;
 }
 
@@ -177,9 +180,60 @@ export function getPointCloud(params?: object) {
 }
 
 export function getMapList(params?: object) {
-  return defHttp.get({ url: Api.getMapList, params }, { errorMessageMode: 'message' });
+  return defHttp.get<{ list: Array<{ id: number; name: string }>; total: number }>(
+    { url: Api.getMapList, params },
+    { errorMessageMode: 'none' }
+  );
 }
 
 export function uploadMap(params: object) {
   return defHttp.post({ url: Api.uploadMap, params }, { errorMessageMode: 'message' });
+}
+
+export interface NavDataItem {
+  /** 重定位点位 ID，按列表顺序从 1 开始 */
+  id: number;
+  name: string;
+  col1?: string;
+  col2?: string;
+  col3?: string;
+  col4?: string;
+}
+
+/** 后端转发设备 get_nav_data；data 内层为点位数组 */
+export function getNavData(params?: { page?: number }) {
+  return defHttp.get<{
+    data?: Array<{ col1?: string; col2?: string; col3?: string; col4?: string }>;
+    totalPages?: number;
+  }>(
+    { url: Api.getNavData, params: { page: params?.page ?? 1 } },
+    { errorMessageMode: 'none' }
+  );
+}
+
+/** 规范化导航点位列表（id = 数组序号，从 1 起）；失败时返回空列表 */
+export async function getNavPointList(params?: { page?: number }): Promise<{
+  list: NavDataItem[];
+  totalPages?: number;
+}> {
+  try {
+    const res = await getNavData(params);
+    const raw = Array.isArray(res?.data) ? res.data : [];
+    const list: NavDataItem[] = [];
+    raw.forEach((item, index) => {
+      const name = String(item?.col1 || '').trim();
+      if (!name) return;
+      list.push({
+        id: index + 1,
+        name,
+        col1: item.col1,
+        col2: item.col2,
+        col3: item.col3,
+        col4: item.col4,
+      });
+    });
+    return { list, totalPages: Number(res?.totalPages) || undefined };
+  } catch {
+    return { list: [] };
+  }
 }

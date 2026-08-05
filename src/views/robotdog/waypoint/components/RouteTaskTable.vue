@@ -65,6 +65,21 @@
                   {{ wp.name || `航点#${wp.id}` }}
                 </a-option>
               </a-select>
+              <a-select
+                v-if="row.action === 'relocalize'"
+                :model-value="row.nav_id"
+                placeholder="选择导航点"
+                allow-search
+                allow-clear
+                :loading="navLoading"
+                style="min-width: 140px; flex: 1"
+                @focus="ensureNavLoaded"
+                @change="(v: number) => onNavSelect(row, v)"
+              >
+                <a-option v-for="n in navOptions" :key="n.id" :value="n.id">
+                  {{ n.name }}
+                </a-option>
+              </a-select>
             </div>
           </div>
           <div class="col col-wait">
@@ -94,8 +109,14 @@
 import { onMounted, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { VueDraggable } from 'vue-draggable-plus';
-import { getDeviceMapData } from '@/api/robotdog/deviceMap';
-import type { RouteTaskItem, RouteTaskParams, WaypointItem } from '@/api/robotdog/waypoint';
+import {
+  getMapList,
+  getNavPointList,
+  type NavDataItem,
+  type RouteTaskItem,
+  type RouteTaskParams,
+  type WaypointItem,
+} from '@/api/robotdog/waypoint';
 
 export type TaskRow = {
   uid: string;
@@ -103,6 +124,8 @@ export type TaskRow = {
   wait_sec: number;
   map_name?: string;
   waypoint_id?: number;
+  /** relocalize：导航点位 ID */
+  nav_id?: number;
 };
 
 const ACTION_OPTIONS = [
@@ -139,6 +162,7 @@ const createEmptyRow = (): TaskRow => ({
   wait_sec: 0,
   map_name: undefined,
   waypoint_id: undefined,
+  nav_id: undefined,
 });
 
 const toRows = (tasks?: RouteTaskItem[]): TaskRow[] => {
@@ -152,6 +176,8 @@ const toRows = (tasks?: RouteTaskItem[]): TaskRow[] => {
       t.params?.waypoint_id != null && Number(t.params.waypoint_id) > 0
         ? Number(t.params.waypoint_id)
         : undefined,
+    nav_id:
+      t.params?.id != null && Number(t.params.id) > 0 ? Number(t.params.id) : undefined,
   }));
 };
 
@@ -163,6 +189,9 @@ const toTasks = (rows: TaskRow[]): RouteTaskItem[] =>
     }
     if (row.action === 'navigate' && row.waypoint_id != null) {
       params.waypoint_id = Number(row.waypoint_id);
+    }
+    if (row.action === 'relocalize' && row.nav_id != null) {
+      params.id = Number(row.nav_id);
     }
     return {
       seq: i + 1,
@@ -176,6 +205,10 @@ const innerList = ref<TaskRow[]>(toRows(props.modelValue));
 const mapOptions = ref<string[]>([]);
 const mapsLoading = ref(false);
 let mapsLoaded = false;
+
+const navOptions = ref<NavDataItem[]>([]);
+const navLoading = ref(false);
+let navLoaded = false;
 
 const syncOut = () => {
   emit('update:modelValue', toTasks(innerList.value));
@@ -207,13 +240,29 @@ const ensureMapsLoaded = async () => {
   if (mapsLoaded || mapsLoading.value) return;
   mapsLoading.value = true;
   try {
-    const res = await getDeviceMapData({ page: 1 });
-    mapOptions.value = res.list.map((m) => m.col1);
-    mapsLoaded = true;
-  } catch (e) {
-    Message.error((e as Error)?.message || '获取地图列表失败');
+    const res = await getMapList({ page: 1, limit: 200 });
+    mapOptions.value = (res?.list || [])
+      .map((m) => String(m.name || '').trim())
+      .filter(Boolean);
+  } catch {
+    mapOptions.value = [];
   } finally {
+    mapsLoaded = true;
     mapsLoading.value = false;
+  }
+};
+
+const ensureNavLoaded = async () => {
+  if (navLoaded || navLoading.value) return;
+  navLoading.value = true;
+  try {
+    const res = await getNavPointList({ page: 1 });
+    navOptions.value = res.list || [];
+  } catch {
+    navOptions.value = [];
+  } finally {
+    navLoaded = true;
+    navLoading.value = false;
   }
 };
 
@@ -227,6 +276,11 @@ const onActionSelect = (row: TaskRow, v: string) => {
   if (row.action !== 'navigate') {
     row.waypoint_id = undefined;
   }
+  if (row.action !== 'relocalize') {
+    row.nav_id = undefined;
+  } else {
+    ensureNavLoaded();
+  }
   syncOut();
 };
 
@@ -237,6 +291,11 @@ const onMapSelect = (row: TaskRow, v: string) => {
 
 const onWaypointSelect = (row: TaskRow, v: number) => {
   row.waypoint_id = v != null && Number(v) > 0 ? Number(v) : undefined;
+  syncOut();
+};
+
+const onNavSelect = (row: TaskRow, v: number) => {
+  row.nav_id = v != null && Number(v) > 0 ? Number(v) : undefined;
   syncOut();
 };
 
@@ -257,7 +316,8 @@ watch(
           r.action === innerList.value[i].action &&
           r.wait_sec === innerList.value[i].wait_sec &&
           (r.map_name || '') === (innerList.value[i].map_name || '') &&
-          (r.waypoint_id || 0) === (innerList.value[i].waypoint_id || 0)
+          (r.waypoint_id || 0) === (innerList.value[i].waypoint_id || 0) &&
+          (r.nav_id || 0) === (innerList.value[i].nav_id || 0)
       );
     if (!sameActions) {
       innerList.value = next;
@@ -269,6 +329,9 @@ watch(
 onMounted(() => {
   if (innerList.value.some((r) => r.action === 'switch_map')) {
     ensureMapsLoaded();
+  }
+  if (innerList.value.some((r) => r.action === 'relocalize')) {
+    ensureNavLoaded();
   }
 });
 
@@ -287,6 +350,10 @@ defineExpose({
       }
       if (t.action === 'navigate' && !t.params?.waypoint_id) {
         Message.warning(`子任务 ${t.seq}：请选择航点`);
+        return false;
+      }
+      if (t.action === 'relocalize' && !t.params?.id) {
+        Message.warning(`子任务 ${t.seq}：请选择导航点`);
         return false;
       }
     }
