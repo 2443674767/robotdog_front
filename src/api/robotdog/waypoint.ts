@@ -19,6 +19,7 @@ enum Api {
   unpublishRoute = './robotdog/waypoint/unpublishRoute',
   delRoute = './robotdog/waypoint/delRoute',
   getRouteDetail = './robotdog/waypoint/getRouteDetail',
+  getRouteWaypointAll = './robotdog/waypoint/getRouteWaypointAll',
   getPointCloud = './robotdog/waypoint/getPointCloud',
   getMapList = './robotdog/waypoint/getMapList',
   uploadMap = './robotdog/waypoint/uploadMap',
@@ -53,6 +54,8 @@ export interface WaypointItem {
   y?: number;
   z?: number;
   yaw?: number;
+  /** 1 = 任务航点（可绑云台预置位）；0 = 普通航点 */
+  is_task?: number;
   remark?: string;
 }
 
@@ -179,6 +182,39 @@ export function delRoute(params: { id?: number; ids?: number[] }) {
 
 export function getRouteDetail(params: { id: number }) {
   return defHttp.get({ url: Api.getRouteDetail, params }, { errorMessageMode: 'message' });
+}
+
+/** 航线航点精简全量：GET /robotdog/waypoint/getRouteWaypointAll */
+export interface RouteWaypointSlimItem {
+  seq: number;
+  id: number;
+  name: string;
+  /** 1 = 任务航点；0 = 普通航点 */
+  is_task?: number;
+  /** 关联预置位 ID；无则为 0 */
+  preset_id?: number;
+}
+
+export interface RouteWaypointAllItem {
+  route_id: number;
+  route_name: string;
+  waypoints: RouteWaypointSlimItem[];
+}
+
+export function getRouteWaypointAll(params?: {
+  tenant_id?: number;
+  route_id?: number;
+  id?: number;
+  dog_id?: number;
+  status?: string;
+  run_status?: string;
+  route_name?: string;
+  name?: string;
+}) {
+  return defHttp.get<PageResult<RouteWaypointAllItem>>(
+    { url: Api.getRouteWaypointAll, params },
+    { errorMessageMode: 'message' }
+  );
 }
 
 export function getPointCloud(params?: object) {
