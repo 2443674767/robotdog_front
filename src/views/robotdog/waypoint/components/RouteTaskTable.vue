@@ -42,15 +42,18 @@
               </a-select>
               <a-select
                 v-if="row.action === 'switch_map'"
-                :model-value="row.map_name || undefined"
+                :model-value="row.map_id"
                 placeholder="选择地图"
                 allow-search
-                :loading="mapsLoading"
+                allow-clear
+                :loading="mapNavLoading"
                 style="min-width: 140px; flex: 1"
-                @focus="ensureMapsLoaded"
-                @change="(v: string) => onMapSelect(row, v)"
+                @focus="ensureMapNavLoaded"
+                @change="(v: number) => onMapSelect(row, v)"
               >
-                <a-option v-for="m in mapOptions" :key="m" :value="m">{{ m }}</a-option>
+                <a-option v-for="m in mapOptions" :key="m.id" :value="m.id">
+                  {{ m.name }}
+                </a-option>
               </a-select>
               <a-select
                 v-if="row.action === 'navigate'"
@@ -65,21 +68,40 @@
                   {{ wp.name || `航点#${wp.id}` }}
                 </a-option>
               </a-select>
-              <a-select
-                v-if="row.action === 'relocalize'"
-                :model-value="row.nav_id"
-                placeholder="选择导航点"
-                allow-search
-                allow-clear
-                :loading="navLoading"
-                style="min-width: 140px; flex: 1"
-                @focus="ensureNavLoaded"
-                @change="(v: number) => onNavSelect(row, v)"
-              >
-                <a-option v-for="n in navOptions" :key="n.id" :value="n.id">
-                  {{ n.name }}
-                </a-option>
-              </a-select>
+              <template v-if="row.action === 'relocalize'">
+                <a-select
+                  :model-value="row.nav_map_id"
+                  placeholder="选择地图"
+                  allow-search
+                  allow-clear
+                  :loading="mapNavLoading"
+                  style="min-width: 140px; flex: 1"
+                  @focus="ensureMapNavLoaded"
+                  @change="(v: number) => onRelocalizeMapSelect(row, v)"
+                >
+                  <a-option v-for="m in mapOptions" :key="`relocalize-map-${m.id}`" :value="m.id">
+                    {{ m.name }}
+                  </a-option>
+                </a-select>
+                <a-select
+                  :model-value="row.nav_id"
+                  placeholder="选择导航点"
+                  allow-search
+                  allow-clear
+                  :disabled="!row.nav_map_id"
+                  :loading="mapNavLoading"
+                  style="min-width: 140px; flex: 1"
+                  @change="(v: number) => onNavSelect(row, v)"
+                >
+                  <a-option
+                    v-for="n in pointsForMapId(row.nav_map_id)"
+                    :key="`relocalize-point-${row.nav_map_id}-${n.id}`"
+                    :value="n.id"
+                  >
+                    {{ n.name }}
+                  </a-option>
+                </a-select>
+              </template>
             </div>
           </div>
           <div class="col col-wait">
@@ -110,9 +132,9 @@ import { onMounted, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import {
-  getMapList,
-  getNavPointList,
-  type NavDataItem,
+  fetchAllMapNavData,
+  type MapNavMapItem,
+  type MapNavPointItem,
   type RouteTaskItem,
   type RouteTaskParams,
   type WaypointItem,
@@ -122,10 +144,17 @@ export type TaskRow = {
   uid: string;
   action: string;
   wait_sec: number;
+  /** switch_map：地图序号（从 1 起） */
+  map_id?: number;
   map_name?: string;
   waypoint_id?: number;
-  /** relocalize：导航点位 ID */
+  /** relocalize：所选地图序号 */
+  nav_map_id?: number;
+  /** relocalize：点位所属地图名 */
+  nav_map_name?: string;
+  /** relocalize：点位序号（所属地图 points 内从 1 起） */
   nav_id?: number;
+  point_name?: string;
 };
 
 const ACTION_OPTIONS = [
@@ -160,58 +189,113 @@ const createEmptyRow = (): TaskRow => ({
   uid: genUid(),
   action: '',
   wait_sec: 0,
+  map_id: undefined,
   map_name: undefined,
   waypoint_id: undefined,
+  nav_map_id: undefined,
+  nav_map_name: undefined,
   nav_id: undefined,
+  point_name: undefined,
 });
 
 const toRows = (tasks?: RouteTaskItem[]): TaskRow[] => {
   if (!tasks?.length) return [createEmptyRow()];
-  return tasks.map((t) => ({
-    uid: genUid(),
-    action: t.action || '',
-    wait_sec: Number(t.wait_sec) || 0,
-    map_name: t.params?.map_name,
-    waypoint_id:
-      t.params?.waypoint_id != null && Number(t.params.waypoint_id) > 0
-        ? Number(t.params.waypoint_id)
-        : undefined,
-    nav_id:
-      t.params?.id != null && Number(t.params.id) > 0 ? Number(t.params.id) : undefined,
-  }));
+  return tasks.map((t) => {
+    const switchMapId =
+      t.action === 'switch_map'
+        ? t.params?.map_id != null && Number(t.params.map_id) > 0
+          ? Number(t.params.map_id)
+          : t.params?.id != null && Number(t.params.id) > 0
+            ? Number(t.params.id)
+            : undefined
+        : undefined;
+    const relocalizeMapId =
+      t.action === 'relocalize' && t.params?.map_id != null && Number(t.params.map_id) > 0
+        ? Number(t.params.map_id)
+        : undefined;
+    return {
+      uid: genUid(),
+      action: t.action || '',
+      wait_sec: Number(t.wait_sec) || 0,
+      map_id: switchMapId,
+      map_name: t.action === 'switch_map' ? t.params?.map_name : undefined,
+      waypoint_id:
+        t.params?.waypoint_id != null && Number(t.params.waypoint_id) > 0
+          ? Number(t.params.waypoint_id)
+          : undefined,
+      nav_map_id: relocalizeMapId,
+      nav_map_name: t.action === 'relocalize' ? t.params?.map_name : undefined,
+      nav_id:
+        t.action === 'relocalize' && t.params?.id != null && Number(t.params.id) > 0
+          ? Number(t.params.id)
+          : undefined,
+      point_name: t.action === 'relocalize' ? t.params?.point_name : undefined,
+    };
+  });
+};
+
+const mapOptions = ref<MapNavMapItem[]>([]);
+const currentMapName = ref('');
+const mapNavLoading = ref(false);
+let mapNavLoaded = false;
+/** 避免 syncOut → 父组件回写 → watch → syncOut 递归 */
+let syncingOut = false;
+
+const findMapByName = (name?: string) =>
+  mapOptions.value.find((m) => m.name === name) || undefined;
+
+const findMapById = (id?: number) =>
+  mapOptions.value.find((m) => m.id === id) || undefined;
+
+const pointsForMapId = (mapId?: number): MapNavPointItem[] => {
+  if (mapId == null) return [];
+  return findMapById(mapId)?.points || [];
 };
 
 const toTasks = (rows: TaskRow[]): RouteTaskItem[] =>
-  rows.map((row, i) => {
-    const params: RouteTaskParams = {};
-    if (row.action === 'switch_map' && row.map_name) {
-      params.map_name = row.map_name;
-    }
-    if (row.action === 'navigate' && row.waypoint_id != null) {
-      params.waypoint_id = Number(row.waypoint_id);
-    }
-    if (row.action === 'relocalize' && row.nav_id != null) {
-      params.id = Number(row.nav_id);
-    }
-    return {
-      seq: i + 1,
-      action: row.action,
-      wait_sec: Number(row.wait_sec) || 0,
-      params,
-    };
-  });
+  rows
+    .map((row) => {
+      const params: RouteTaskParams = {};
+      if (row.action === 'switch_map' && row.map_id != null) {
+        params.map_id = Number(row.map_id);
+        params.id = Number(row.map_id);
+        const found = findMapById(row.map_id);
+        params.map_name = found?.name || row.map_name;
+      }
+      if (row.action === 'navigate' && row.waypoint_id != null) {
+        params.waypoint_id = Number(row.waypoint_id);
+      }
+      if (row.action === 'relocalize') {
+        const map = findMapById(row.nav_map_id) || findMapByName(row.nav_map_name);
+        if (map) {
+          params.map_id = map.id;
+          params.map_name = map.name;
+        } else if (row.nav_map_name) {
+          params.map_name = row.nav_map_name;
+        }
+        if (row.nav_id != null) {
+          params.id = Number(row.nav_id);
+          const point = map?.points.find((p) => p.id === row.nav_id);
+          params.point_name = point?.name || row.point_name;
+        }
+      }
+      return {
+        seq: 0,
+        action: row.action,
+        wait_sec: Number(row.wait_sec) || 0,
+        params,
+      };
+    })
+    .map((t, i) => ({ ...t, seq: i + 1 }));
 
 const innerList = ref<TaskRow[]>(toRows(props.modelValue));
-const mapOptions = ref<string[]>([]);
-const mapsLoading = ref(false);
-let mapsLoaded = false;
-
-const navOptions = ref<NavDataItem[]>([]);
-const navLoading = ref(false);
-let navLoaded = false;
 
 const syncOut = () => {
+  syncingOut = true;
   emit('update:modelValue', toTasks(innerList.value));
+  queueMicrotask(() => {
+    syncingOut = false;
+  });
 };
 
 const renumber = () => {
@@ -236,56 +320,101 @@ const removeRow = (index: number) => {
   syncOut();
 };
 
-const ensureMapsLoaded = async () => {
-  if (mapsLoaded || mapsLoading.value) return;
-  mapsLoading.value = true;
-  try {
-    const res = await getMapList({ page: 1, limit: 200 });
-    mapOptions.value = (res?.list || [])
-      .map((m) => String(m.name || '').trim())
-      .filter(Boolean);
-  } catch {
-    mapOptions.value = [];
-  } finally {
-    mapsLoaded = true;
-    mapsLoading.value = false;
-  }
+const backfillAfterLoad = () => {
+  let changed = false;
+  innerList.value.forEach((row) => {
+    if (row.action === 'switch_map' && row.map_id == null && row.map_name) {
+      const found = findMapByName(row.map_name);
+      if (found) {
+        row.map_id = found.id;
+        changed = true;
+      }
+    }
+    if (row.action === 'relocalize') {
+      if (row.nav_map_id == null && row.nav_map_name) {
+        const byName = findMapByName(row.nav_map_name);
+        if (byName) {
+          row.nav_map_id = byName.id;
+          changed = true;
+        }
+      }
+      if (row.nav_map_id != null) {
+        const name = findMapById(row.nav_map_id)?.name;
+        if (name && row.nav_map_name !== name) {
+          row.nav_map_name = name;
+          changed = true;
+        }
+      }
+      if (row.nav_id != null) {
+        const point = pointsForMapId(row.nav_map_id).find((p) => p.id === row.nav_id);
+        if (point) {
+          if (row.point_name !== point.name) {
+            row.point_name = point.name;
+            changed = true;
+          }
+        } else {
+          row.nav_id = undefined;
+          row.point_name = undefined;
+          changed = true;
+        }
+      }
+    }
+  });
+  if (changed) syncOut();
 };
 
-const ensureNavLoaded = async () => {
-  if (navLoaded || navLoading.value) return;
-  navLoading.value = true;
+const ensureMapNavLoaded = async () => {
+  if (mapNavLoaded || mapNavLoading.value) return;
+  mapNavLoading.value = true;
   try {
-    const res = await getNavPointList({ page: 1 });
-    navOptions.value = res.list || [];
+    const res = await fetchAllMapNavData();
+    mapOptions.value = res.maps || [];
+    currentMapName.value = res.current_map_name || '';
+    backfillAfterLoad();
   } catch {
-    navOptions.value = [];
+    mapOptions.value = [];
+    currentMapName.value = '';
   } finally {
-    navLoaded = true;
-    navLoading.value = false;
+    mapNavLoaded = true;
+    mapNavLoading.value = false;
   }
 };
 
 const onActionSelect = (row: TaskRow, v: string) => {
   row.action = v || '';
   if (row.action !== 'switch_map') {
+    row.map_id = undefined;
     row.map_name = undefined;
-  } else {
-    ensureMapsLoaded();
   }
   if (row.action !== 'navigate') {
     row.waypoint_id = undefined;
   }
   if (row.action !== 'relocalize') {
+    row.nav_map_id = undefined;
+    row.nav_map_name = undefined;
     row.nav_id = undefined;
-  } else {
-    ensureNavLoaded();
+    row.point_name = undefined;
+  }
+  if (row.action === 'switch_map' || row.action === 'relocalize') {
+    ensureMapNavLoaded();
   }
   syncOut();
 };
 
-const onMapSelect = (row: TaskRow, v: string) => {
-  row.map_name = v || undefined;
+const onMapSelect = (row: TaskRow, v: number) => {
+  const id = v != null && Number(v) > 0 ? Number(v) : undefined;
+  row.map_id = id;
+  row.map_name = id != null ? findMapById(id)?.name : undefined;
+  syncOut();
+};
+
+const onRelocalizeMapSelect = (row: TaskRow, v: number) => {
+  const id = v != null && Number(v) > 0 ? Number(v) : undefined;
+  row.nav_map_id = id;
+  row.nav_map_name = id != null ? findMapById(id)?.name : undefined;
+  // 换地图后清空原导航点
+  row.nav_id = undefined;
+  row.point_name = undefined;
   syncOut();
 };
 
@@ -295,7 +424,11 @@ const onWaypointSelect = (row: TaskRow, v: number) => {
 };
 
 const onNavSelect = (row: TaskRow, v: number) => {
-  row.nav_id = v != null && Number(v) > 0 ? Number(v) : undefined;
+  const id = v != null && Number(v) > 0 ? Number(v) : undefined;
+  row.nav_id = id;
+  const point = id != null ? pointsForMapId(row.nav_map_id).find((p) => p.id === id) : undefined;
+  row.point_name = point?.name;
+  row.nav_map_name = findMapById(row.nav_map_id)?.name || row.nav_map_name;
   syncOut();
 };
 
@@ -307,6 +440,7 @@ const onWaitChange = (row: TaskRow, v: number) => {
 watch(
   () => props.modelValue,
   (val) => {
+    if (syncingOut) return;
     const next = toRows(val);
     const sameLen = next.length === innerList.value.length;
     const sameActions =
@@ -315,23 +449,28 @@ watch(
         (r, i) =>
           r.action === innerList.value[i].action &&
           r.wait_sec === innerList.value[i].wait_sec &&
+          (r.map_id || 0) === (innerList.value[i].map_id || 0) &&
           (r.map_name || '') === (innerList.value[i].map_name || '') &&
           (r.waypoint_id || 0) === (innerList.value[i].waypoint_id || 0) &&
+          (r.nav_map_id || 0) === (innerList.value[i].nav_map_id || 0) &&
+          (r.nav_map_name || '') === (innerList.value[i].nav_map_name || '') &&
           (r.nav_id || 0) === (innerList.value[i].nav_id || 0)
       );
     if (!sameActions) {
+      // 保留已有 uid，减少拖拽/下拉重挂载
+      next.forEach((r, i) => {
+        if (innerList.value[i]) r.uid = innerList.value[i].uid;
+      });
       innerList.value = next;
+      if (mapNavLoaded) backfillAfterLoad();
     }
   },
   { deep: true }
 );
 
 onMounted(() => {
-  if (innerList.value.some((r) => r.action === 'switch_map')) {
-    ensureMapsLoaded();
-  }
-  if (innerList.value.some((r) => r.action === 'relocalize')) {
-    ensureNavLoaded();
+  if (innerList.value.some((r) => r.action === 'switch_map' || r.action === 'relocalize')) {
+    ensureMapNavLoaded();
   }
 });
 
@@ -343,18 +482,26 @@ defineExpose({
       Message.warning('请至少配置一个子任务功能');
       return false;
     }
-    for (const t of tasks) {
-      if (t.action === 'switch_map' && !t.params?.map_name) {
-        Message.warning(`子任务 ${t.seq}：请选择地图`);
+    for (let i = 0; i < innerList.value.length; i++) {
+      const row = innerList.value[i];
+      if (!row.action) continue;
+      if (row.action === 'switch_map' && !row.map_id) {
+        Message.warning(`子任务 ${i + 1}：请选择地图`);
         return false;
       }
-      if (t.action === 'navigate' && !t.params?.waypoint_id) {
-        Message.warning(`子任务 ${t.seq}：请选择航点`);
+      if (row.action === 'navigate' && !row.waypoint_id) {
+        Message.warning(`子任务 ${i + 1}：请选择航点`);
         return false;
       }
-      if (t.action === 'relocalize' && !t.params?.id) {
-        Message.warning(`子任务 ${t.seq}：请选择导航点`);
-        return false;
+      if (row.action === 'relocalize') {
+        if (!row.nav_map_id) {
+          Message.warning(`子任务 ${i + 1}：请选择重定位地图`);
+          return false;
+        }
+        if (!row.nav_id) {
+          Message.warning(`子任务 ${i + 1}：请选择导航点`);
+          return false;
+        }
       }
     }
     return true;

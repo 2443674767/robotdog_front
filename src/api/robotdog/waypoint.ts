@@ -23,6 +23,7 @@ enum Api {
   getMapList = './robotdog/waypoint/getMapList',
   uploadMap = './robotdog/waypoint/uploadMap',
   getNavData = './robotdog/waypoint/getNavData',
+  getAllMapNavData = './robotdog/waypoint/getAllMapNavData',
 }
 
 export interface DogItem {
@@ -56,11 +57,16 @@ export interface WaypointItem {
 }
 
 export interface RouteTaskParams {
+  /** switch_map：地图名；relocalize 时可附带所属地图名 */
   map_name?: string;
+  /** switch_map：设备地图列表序号，从 1 起 */
+  map_id?: number;
   /** navigate 子任务必填，关联航点 ID */
   waypoint_id?: number;
-  /** relocalize 子任务必填，导航点位 ID（getNavData 列表序号，从 1 起） */
+  /** relocalize：导航点位在所属地图 points[] 中的序号，从 1 起 */
   id?: number;
+  /** relocalize：导航点名称 */
+  point_name?: string;
   [key: string]: unknown;
 }
 
@@ -180,14 +186,68 @@ export function getPointCloud(params?: object) {
 }
 
 export function getMapList(params?: object) {
-  return defHttp.get<{ list: Array<{ id: number; name: string }>; total: number }>(
-    { url: Api.getMapList, params },
-    { errorMessageMode: 'none' }
-  );
+  return defHttp.get<{
+    data?: Array<{ col1?: string; col2?: string; col3?: string }>;
+    list?: Array<{ id?: number; name?: string; col1?: string }>;
+    totalPages?: number;
+    total?: number;
+  }>({ url: Api.getMapList, params }, { errorMessageMode: 'none' });
 }
 
 export function uploadMap(params: object) {
   return defHttp.post({ url: Api.uploadMap, params }, { errorMessageMode: 'message' });
+}
+
+export interface MapNavPointItem {
+  /** 点位在所属地图 points[] 中的序号，从 1 起 */
+  id: number;
+  name: string;
+}
+
+export interface MapNavMapItem {
+  /** 地图在 data[] 中的序号，从 1 起 */
+  id: number;
+  name: string;
+  points: MapNavPointItem[];
+}
+
+export interface AllMapNavData {
+  current_map_name: string;
+  maps: MapNavMapItem[];
+}
+
+/** 一次获取全部地图及其导航点位（后端转发 get_all_map_nav_data） */
+export function getAllMapNavDataRaw() {
+  return defHttp.get<{
+    current_map_name?: string;
+    data?: Array<{ name?: string; points?: string[] }>;
+  }>({ url: Api.getAllMapNavData }, { errorMessageMode: 'none' });
+}
+
+/** 规范化；失败返回空数据，不阻断页面 */
+export async function fetchAllMapNavData(): Promise<AllMapNavData> {
+  try {
+    const res = await getAllMapNavDataRaw();
+    const raw = Array.isArray(res?.data) ? res.data : [];
+    const maps: MapNavMapItem[] = [];
+    raw.forEach((item, index) => {
+      const name = String(item?.name || '').trim();
+      if (!name) return;
+      const points: MapNavPointItem[] = [];
+      (Array.isArray(item?.points) ? item.points : []).forEach((p, pi) => {
+        const pname = String(p || '').trim();
+        if (!pname) return;
+        points.push({ id: pi + 1, name: pname });
+      });
+      maps.push({ id: index + 1, name, points });
+    });
+    return {
+      current_map_name: String(res?.current_map_name || '').trim(),
+      maps,
+    };
+  } catch {
+    return { current_map_name: '', maps: [] };
+  }
 }
 
 export interface NavDataItem {
@@ -200,7 +260,7 @@ export interface NavDataItem {
   col4?: string;
 }
 
-/** 后端转发设备 get_nav_data；data 内层为点位数组 */
+/** @deprecated 请改用 fetchAllMapNavData */
 export function getNavData(params?: { page?: number }) {
   return defHttp.get<{
     data?: Array<{ col1?: string; col2?: string; col3?: string; col4?: string }>;
@@ -211,7 +271,7 @@ export function getNavData(params?: { page?: number }) {
   );
 }
 
-/** 规范化导航点位列表（id = 数组序号，从 1 起）；失败时返回空列表 */
+/** @deprecated 请改用 fetchAllMapNavData */
 export async function getNavPointList(params?: { page?: number }): Promise<{
   list: NavDataItem[];
   totalPages?: number;
