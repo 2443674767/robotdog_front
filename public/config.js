@@ -35,20 +35,23 @@ window.globalConfig = {
     RtspVisible: "rtsp://10.21.31.111/live/main",
     RtspThermal: "rtsp://10.21.31.111/live//thermal",
     StreamPlayUrl: "http://localhost:8080/robotdog/m20_camera.live.flv",
-    StreamPlayUrlVisible: "http://localhost:8080/robotdog/m20_camera.live.flv",
+    StreamPlayUrlVisible: "http://localhost:8080/robotdog/m20_camera.live.flv", 
     StreamPlayUrlThermal: "http://localhost:8080/robotdog/m20_thermal.live.flv",
+    
     VideoStreams: [
       {
         key: "visible",
         label: "可见光",
         rtsp: "rtsp://10.21.31.111/live/main",
-        playUrl: "http://localhost:8080/robotdog/m20_camera.live.flv",
+        // playUrl: "http://localhost:8080/robotdog/m20_camera.live.flv",
+        playUrl: "http://localhost:8080/robotdog/m20_jx_single.live.flv",
       },
       {
         key: "thermal",
         label: "红外",
         rtsp: "rtsp://10.21.31.111/live//thermal",
-        playUrl: "http://localhost:8080/robotdog/m20_thermal.live.flv",
+        // playUrl: "http://localhost:8080/robotdog/m20_thermal.live.flv",
+        playUrl: "http://localhost:8080/robotdog/m20_jx_ir.live.flv",
       },
     ],
     RtspUrl: "rtsp://10.21.31.111/live/main",
