@@ -9,7 +9,10 @@ enum Api {
   getPlayUrl = './robotdog/preset/getPlayUrl',
   /** @deprecated 请改用 /robotdog/control/dog/move */
   dogCmd = './robotdog/preset/dogCmd',
-  /** @deprecated 请改用 /robotdog/control/ptz/move */
+  /** 云台控制（预置位模块） */
+  ptzMove = './robotdog/preset/ptzMove',
+  ptzRealtime = './robotdog/preset/ptzGetRealtime',
+  /** @deprecated 兼容旧路径，新代码用 ptzMove */
   ptzCmd = './robotdog/preset/ptzCmd',
   gotoWaypoint = './robotdog/preset/gotoWaypoint',
   runRoute = './robotdog/preset/runRoute',
@@ -82,6 +85,25 @@ export function ptzCmd(params: {
   zoom?: number;
 }) {
   return defHttp.post({ url: Api.ptzCmd, params }, { errorMessageMode: 'message' });
+}
+
+/** 云台控制：POST /robotdog/preset/ptzMove */
+export function ptzMove(params: {
+  ptz_id?: number;
+  cmd?: string;
+  direction?: string;
+  speed?: number;
+  duration?: number;
+  step?: number;
+  pan?: number;
+  tilt?: number;
+}) {
+  return defHttp.post({ url: Api.ptzMove, params }, { errorMessageMode: 'message' });
+}
+
+/** 云台实时：GET /robotdog/preset/ptzGetRealtime */
+export function getPtzRealtime(params?: { ptz_id?: number }) {
+  return defHttp.get({ url: Api.ptzRealtime, params }, { errorMessageMode: 'none' });
 }
 
 export function gotoWaypoint(params: { dog_id: number; waypoint_id: number }) {

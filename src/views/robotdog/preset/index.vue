@@ -15,14 +15,20 @@
     <VideoPanel class="center" :play-url="playUrl" :rtsp-url="rtspUrl" />
     <ControlPanel
       class="right"
+      :dog-id="activeDogId"
+      :battery="dogBattery"
+      :nav-status="dogNavStatus"
+      :status-loading="statusLoading"
       @dog-cmd="onDogCmd"
+      @dog-gait="onDogGait"
+      @dog-charge="onDogCharge"
       @ptz-cmd="onPtzCmd"
     />
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import RoutePanel from './components/RoutePanel.vue';
 import VideoPanel from './components/VideoPanel.vue';
@@ -32,10 +38,17 @@ import {
   getPresetRouteList,
   getTaskStatus,
   gotoWaypoint,
+  ptzMove,
   runRoute,
   type PresetRoute,
 } from '@/api/robotdog/preset';
-import { dogMove, ptzMove } from '@/api/robotdog/control';
+import {
+  dogCharge,
+  dogMove,
+  getDogRealtime,
+  parseDogRealtime,
+  setDogGait,
+} from '@/api/robotdog/control';
 import { getWaypointList, type WaypointItem } from '@/api/robotdog/waypoint';
 
 const routes = ref<PresetRoute[]>([]);
@@ -46,6 +59,11 @@ const loading = ref(false);
 const playUrl = ref('');
 const rtspUrl = ref('');
 const lastTaskId = ref('');
+
+const dogBattery = ref<number | null>(null);
+const dogNavStatus = ref('未知');
+const statusLoading = ref(false);
+let statusTimer: number | undefined;
 
 const activeRoute = computed(() => routes.value.find((r) => r.id === activeRouteId.value) || null);
 const activeDogId = computed(() => activeRoute.value?.dog_id || null);
@@ -66,6 +84,47 @@ const enrichRoutes = (list: PresetRoute[]): PresetRoute[] =>
       }));
     return { ...route, waypoints };
   });
+
+const resetDogStatus = () => {
+  dogBattery.value = null;
+  dogNavStatus.value = '未知';
+};
+
+const fetchDogRealtime = async () => {
+  const dogId = activeDogId.value;
+  if (!dogId) {
+    resetDogStatus();
+    return;
+  }
+  statusLoading.value = true;
+  try {
+    const res = await getDogRealtime({ dog_id: dogId });
+    const parsed = parseDogRealtime(res);
+    dogBattery.value = parsed.battery;
+    dogNavStatus.value = parsed.navStatus;
+  } catch {
+    resetDogStatus();
+  } finally {
+    statusLoading.value = false;
+  }
+};
+
+const stopStatusPoll = () => {
+  if (statusTimer) {
+    window.clearInterval(statusTimer);
+    statusTimer = undefined;
+  }
+};
+
+const startStatusPoll = () => {
+  stopStatusPoll();
+  if (!activeDogId.value) {
+    resetDogStatus();
+    return;
+  }
+  fetchDogRealtime();
+  statusTimer = window.setInterval(fetchDogRealtime, 3000);
+};
 
 const loadPlayUrl = async (dogId: number | null | undefined) => {
   if (!dogId) {
@@ -158,16 +217,19 @@ const onRunRoute = async (action: string) => {
   }
 };
 
-/** 机械狗方向：/robotdog/control/dog/move */
-const onDogCmd = async (cmd: string, payload?: Record<string, number | string>) => {
+const requireDogId = (actionTip = '请先选择已绑定机械狗的航线') => {
   const dogId = activeDogId.value;
   if (!dogId) {
-    if (cmd !== 'stop') {
-      Message.warning('请先选择已绑定机械狗的航线');
-    }
-    return;
+    Message.warning(actionTip);
+    return null;
   }
-  // UI 可能仍发 back，统一映射为文档 direction
+  return dogId;
+};
+
+/** 机械狗方向：/robotdog/control/dog/move */
+const onDogCmd = async (cmd: string, payload?: Record<string, number | string>) => {
+  const dogId = requireDogId();
+  if (!dogId) return;
   const directionMap: Record<string, string> = {
     forward: 'forward',
     back: 'backward',
@@ -186,7 +248,23 @@ const onDogCmd = async (cmd: string, payload?: Record<string, number | string>) 
   });
 };
 
-/** 云台：/robotdog/control/ptz/move */
+/** 步态：/robotdog/control/dog/setGait */
+const onDogGait = async (gait: 'basic' | 'stair') => {
+  const dogId = requireDogId('请先选择已绑定机械狗的航线后再切换步态');
+  if (!dogId) return;
+  await setDogGait({ dog_id: dogId, gait });
+  Message.success(gait === 'stair' ? '已切换楼梯步态' : '已切换普通步态');
+};
+
+/** 充电桩：/robotdog/control/dog/charge */
+const onDogCharge = async (action: 'enter' | 'exit') => {
+  const dogId = requireDogId('请先选择已绑定机械狗的航线后再操作充电桩');
+  if (!dogId) return;
+  await dogCharge({ dog_id: dogId, action });
+  Message.success(action === 'enter' ? '已下发进入充电桩' : '已下发退出充电桩');
+};
+
+/** 云台：/robotdog/preset/ptzMove */
 const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) => {
   const cmdMap: Record<string, string> = {
     up: 'up',
@@ -198,6 +276,10 @@ const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) 
     'zoom-out': 'zoom_out',
     zoom_in: 'zoom_in',
     zoom_out: 'zoom_out',
+    focus_near: 'focus_near',
+    focus_far: 'focus_far',
+    'focus-near': 'focus_near',
+    'focus-far': 'focus_far',
   };
   const mapped = cmdMap[cmd];
   if (!mapped) return;
@@ -210,8 +292,17 @@ const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) 
   });
 };
 
-onMounted(() => {
-  fetchRoutes();
+watch(activeDogId, () => {
+  startStatusPoll();
+});
+
+onMounted(async () => {
+  await fetchRoutes();
+  startStatusPoll();
+});
+
+onBeforeUnmount(() => {
+  stopStatusPoll();
 });
 </script>
 
