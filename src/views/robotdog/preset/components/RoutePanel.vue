@@ -29,11 +29,17 @@
           :class="{ active: wp.id === activeWaypointId }"
           @click="emit('select-waypoint', wp.id)"
         >
-          <div class="wp-index">{{ idx + 1 }}</div>
+          <div class="wp-index">{{ wp.seq ?? idx + 1 }}</div>
           <div class="wp-body">
-            <div class="wp-name">{{ wp.name }}</div>
+            <div class="wp-name-row">
+              <span class="wp-name">{{ wp.name }}</span>
+              <a-tag v-if="Number(wp.is_task) === 1" size="small" color="orangered">任务</a-tag>
+            </div>
             <div class="wp-meta">
-              X {{ wp.x ?? 0 }} · Y {{ wp.y ?? 0 }} · Z {{ wp.z ?? 0 }} · Yaw {{ wp.yaw ?? 0 }}°
+              <template v-if="Number(wp.is_task) === 1">
+                预置位 {{ Number(wp.preset_id) > 0 ? `#${wp.preset_id}` : '未设置' }}
+              </template>
+              <template v-else>普通航点</template>
             </div>
           </div>
           <a-button size="mini" type="text" @click.stop="emit('goto-waypoint', wp.id)">前往</a-button>
@@ -197,9 +203,19 @@ const statusColor = (status?: string) => {
   font-weight: 600;
 }
 
+.wp-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .wp-name {
   font-size: 13px;
   color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wp-meta {

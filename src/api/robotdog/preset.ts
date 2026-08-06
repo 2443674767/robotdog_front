@@ -14,6 +14,13 @@ enum Api {
   ptzRealtime = './robotdog/preset/ptzGetRealtime',
   /** @deprecated 兼容旧路径，新代码用 ptzMove */
   ptzCmd = './robotdog/preset/ptzCmd',
+  ptzSetPreset = './robotdog/preset/ptzSetPreset',
+  ptzUpdatePresetBase = './robotdog/preset/ptzUpdatePresetBase',
+  ptzPresetList = './robotdog/preset/ptzPresetList',
+  ptzPresetDetail = './robotdog/preset/ptzPresetDetail',
+  ptzPresetDel = './robotdog/preset/ptzPresetDel',
+  ptzPhoto = './robotdog/preset/ptzPhoto',
+  ptzPhotoList = './robotdog/preset/ptzPhotoList',
   gotoWaypoint = './robotdog/preset/gotoWaypoint',
   runRoute = './robotdog/preset/runRoute',
   getTaskStatus = './robotdog/preset/getTaskStatus',
@@ -22,10 +29,53 @@ enum Api {
 export interface PresetWaypoint {
   id: number;
   name: string;
+  /** 航线内序号，从 1 开始 */
+  seq?: number;
   x?: number;
   y?: number;
   z?: number;
   yaw?: number;
+  /** 1 = 任务航点，可绑云台预置位 */
+  is_task?: number;
+  /** 关联预置位 ID；无则为 0 */
+  preset_id?: number;
+}
+
+/** 云台预置位 */
+export interface PtzPresetItem {
+  id: number;
+  tenant_id?: number;
+  waypoint_id: number;
+  ptz_id?: number;
+  name?: string;
+  sort_no?: number;
+  /** 伺服拍照是否：0 / 1 */
+  servo_photo?: number;
+  /** 回正是否：0 / 1 */
+  auto_home?: number;
+  pitch?: number;
+  yaw?: number;
+  roll?: number;
+  zoom?: number;
+  focus_status?: string;
+  remark?: string;
+  raw_data?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PtzPhotoItem {
+  id: number;
+  tenant_id?: number;
+  waypoint_id?: number;
+  ptz_id?: number;
+  filename?: string;
+  file_path?: string;
+  /** 预览地址 */
+  url?: string;
+  mode?: string;
+  raw_data?: string;
+  created_at?: string;
 }
 
 export interface PresetRoute {
@@ -97,6 +147,7 @@ export function ptzMove(params: {
   step?: number;
   pan?: number;
   tilt?: number;
+  roll?: number;
 }) {
   return defHttp.post({ url: Api.ptzMove, params }, { errorMessageMode: 'message' });
 }
@@ -104,6 +155,83 @@ export function ptzMove(params: {
 /** 云台实时：GET /robotdog/preset/ptzGetRealtime */
 export function getPtzRealtime(params?: { ptz_id?: number }) {
   return defHttp.get({ url: Api.ptzRealtime, params }, { errorMessageMode: 'none' });
+}
+
+/** 设置/更新预置位（全部信息，含实时姿态） */
+export function ptzSetPreset(params: {
+  waypoint_id: number;
+  ptz_id?: number;
+  id?: number;
+  sort_no?: number;
+  servo_photo?: number;
+  auto_home?: number;
+  name?: string;
+  remark?: string;
+}) {
+  return defHttp.post<PtzPresetItem>(
+    { url: Api.ptzSetPreset, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+/** 仅更新伺服拍照 / 回正开关 */
+export function ptzUpdatePresetBase(params: {
+  id: number;
+  servo_photo: number;
+  auto_home: number;
+}) {
+  return defHttp.post<PtzPresetItem>(
+    { url: Api.ptzUpdatePresetBase, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+export function getPtzPresetList(params?: {
+  waypoint_id?: number;
+  ptz_id?: number;
+  page?: number;
+  limit?: number;
+}) {
+  return defHttp.get<PageResult<PtzPresetItem>>(
+    { url: Api.ptzPresetList, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+export function getPtzPresetDetail(params: { id: number }) {
+  return defHttp.get<PtzPresetItem>(
+    { url: Api.ptzPresetDetail, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+export function ptzPresetDel(params: { id: number }) {
+  return defHttp.post({ url: Api.ptzPresetDel, params }, { errorMessageMode: 'message' });
+}
+
+export function ptzPhoto(params?: {
+  ptz_id?: number;
+  waypoint_id?: number;
+  mode?: string;
+  folder?: string;
+  filename?: string;
+}) {
+  return defHttp.post<PtzPhotoItem>(
+    { url: Api.ptzPhoto, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+export function getPtzPhotoList(params?: {
+  waypoint_id?: number;
+  ptz_id?: number;
+  page?: number;
+  limit?: number;
+}) {
+  return defHttp.get<PageResult<PtzPhotoItem>>(
+    { url: Api.ptzPhotoList, params },
+    { errorMessageMode: 'message' }
+  );
 }
 
 export function gotoWaypoint(params: { dog_id: number; waypoint_id: number }) {

@@ -75,7 +75,7 @@
             </div>
             <div class="pad-row">
               <a-button long @click="emitPtz('left')">左转</a-button>
-              <span />
+              <a-button long type="outline" @click="emitPtz('home')">回正</a-button>
               <a-button long @click="emitPtz('right')">右转</a-button>
             </div>
             <div class="pad-row">
@@ -102,6 +102,61 @@
             <div>变倍 Zoom：{{ ptz.zoom.toFixed(1) }}x</div>
             <div>变焦 Focus：{{ ptz.focus.toFixed(1) }}</div>
           </div>
+
+          <template v-if="showPresetConfig">
+            <div class="section-title mt">预置位配置</div>
+            <div class="preset-form">
+              <div class="form-row">
+                <span class="form-label">预置位 ID</span>
+                <a-input-number
+                  v-model="form.id"
+                  :min="1"
+                  :precision="0"
+                  placeholder="新建可空"
+                  allow-clear
+                  hide-button
+                  style="width: 100%"
+                />
+              </div>
+              <div class="form-row">
+                <span class="form-label">排序 ID</span>
+                <a-input-number
+                  v-model="form.sort_no"
+                  :min="1"
+                  :precision="0"
+                  style="width: 100%"
+                />
+              </div>
+              <div class="form-row switch-row">
+                <span class="form-label">伺服拍照是否</span>
+                <a-radio-group type="button" size="small" :model-value="form.servo_photo" @change="onServoChange">
+                  <a-radio :value="1">是</a-radio>
+                  <a-radio :value="0">否</a-radio>
+                </a-radio-group>
+              </div>
+              <div class="form-row switch-row">
+                <span class="form-label">回正是否</span>
+                <a-radio-group type="button" size="small" :model-value="form.auto_home" @change="onHomeChange">
+                  <a-radio :value="1">是</a-radio>
+                  <a-radio :value="0">否</a-radio>
+                </a-radio-group>
+              </div>
+            </div>
+            <div class="preset-actions">
+              <a-button size="small" type="outline" :loading="actionLoading === 'call'" @click="emit('preset-call')">
+                调用
+              </a-button>
+              <a-button size="small" type="outline" :loading="actionLoading === 'base'" @click="emit('preset-update-base')">
+                更新基础
+              </a-button>
+              <a-button size="small" type="primary" :loading="actionLoading === 'set'" @click="emit('preset-set')">
+                设置预置位
+              </a-button>
+              <a-button size="small" status="danger" :loading="actionLoading === 'del'" @click="emit('preset-del')">
+                删除
+              </a-button>
+            </div>
+          </template>
         </div>
       </a-tab-pane>
     </a-tabs>
@@ -110,26 +165,51 @@
 
 <script lang="ts" setup>
 import { computed, reactive, ref, watch } from 'vue';
+import type { PtzPresetItem } from '@/api/robotdog/preset';
 
 const props = defineProps<{
   dogId?: number | null;
   battery?: number | null;
   navStatus?: string;
   statusLoading?: boolean;
+  /** 选中任务航点时显示预置位配置 */
+  showPresetConfig?: boolean;
+  /** 当前预置位回填 */
+  preset?: PtzPresetItem | null;
+  actionLoading?: '' | 'call' | 'base' | 'set' | 'del';
 }>();
 
 const emit = defineEmits<{
+  (e: 'update:activeTab', v: string): void;
   (e: 'dog-cmd', cmd: string, payload?: Record<string, number | string>): void;
   (e: 'dog-gait', gait: 'basic' | 'stair'): void;
   (e: 'dog-charge', action: 'enter' | 'exit'): void;
   (e: 'ptz-cmd', cmd: string, payload?: Record<string, number | string>): void;
+  (e: 'preset-call'): void;
+  (e: 'preset-update-base'): void;
+  (e: 'preset-set'): void;
+  (e: 'preset-del'): void;
+  (e: 'preset-form-change', form: PresetFormState): void;
 }>();
 
-const activeTab = ref('dog');
+export interface PresetFormState {
+  id: number | undefined;
+  sort_no: number;
+  servo_photo: number;
+  auto_home: number;
+}
+
+const activeTab = defineModel<string>('activeTab', { default: 'dog' });
 const dogSpeed = ref(0.6);
 const gait = ref<'basic' | 'stair'>('basic');
 const chargeLoading = ref<'enter' | 'exit' | ''>('');
 const ptz = reactive({ pitch: 0, yaw: 0, zoom: 1, focus: 1 });
+const form = reactive<PresetFormState>({
+  id: undefined,
+  sort_no: 1,
+  servo_photo: 0,
+  auto_home: 0,
+});
 
 const batteryText = computed(() => {
   if (props.dogId == null) return '未知';
@@ -142,6 +222,51 @@ const navStatusText = computed(() => {
   const s = String(props.navStatus || '').trim();
   return s || '未知';
 });
+
+const syncFormFromPreset = (p?: PtzPresetItem | null) => {
+  if (!p) {
+    form.id = undefined;
+    form.sort_no = 1;
+    form.servo_photo = 0;
+    form.auto_home = 0;
+    return;
+  }
+  form.id = p.id;
+  form.sort_no = Number(p.sort_no) > 0 ? Number(p.sort_no) : 1;
+  form.servo_photo = Number(p.servo_photo) === 1 ? 1 : 0;
+  form.auto_home = Number(p.auto_home) === 1 ? 1 : 0;
+};
+
+const emitForm = () => {
+  emit('preset-form-change', {
+    id: form.id,
+    sort_no: form.sort_no,
+    servo_photo: form.servo_photo,
+    auto_home: form.auto_home,
+  });
+};
+
+watch(
+  () => props.preset,
+  (p) => {
+    syncFormFromPreset(p);
+    emitForm();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.showPresetConfig,
+  (show) => {
+    if (!show) syncFormFromPreset(null);
+  }
+);
+
+watch(
+  () => [form.id, form.sort_no, form.servo_photo, form.auto_home],
+  () => emitForm(),
+  { deep: true }
+);
 
 const emitDog = (cmd: string) => {
   emit('dog-cmd', cmd, { speed: dogSpeed.value });
@@ -158,7 +283,6 @@ const emitCharge = async (action: 'enter' | 'exit') => {
   try {
     emit('dog-charge', action);
   } finally {
-    // loading 由父级请求结束后很快结束；此处短暂占位避免连点
     window.setTimeout(() => {
       if (chargeLoading.value === action) chargeLoading.value = '';
     }, 600);
@@ -166,6 +290,12 @@ const emitCharge = async (action: 'enter' | 'exit') => {
 };
 
 const emitPtz = (cmd: string) => {
+  if (cmd === 'home') {
+    ptz.pitch = 0;
+    ptz.yaw = 0;
+    emit('ptz-cmd', 'home', { ...ptz, speed: 50 });
+    return;
+  }
   if (cmd === 'up') ptz.pitch = Math.min(90, ptz.pitch + 5);
   if (cmd === 'down') ptz.pitch = Math.max(-90, ptz.pitch - 5);
   if (cmd === 'left') ptz.yaw = Math.max(-180, ptz.yaw - 5);
@@ -177,12 +307,24 @@ const emitPtz = (cmd: string) => {
   emit('ptz-cmd', cmd, { ...ptz, speed: 50 });
 };
 
+const onServoChange = (v: string | number | boolean) => {
+  form.servo_photo = Number(v) === 1 ? 1 : 0;
+};
+
+const onHomeChange = (v: string | number | boolean) => {
+  form.auto_home = Number(v) === 1 ? 1 : 0;
+};
+
 watch(
   () => props.dogId,
   () => {
     gait.value = 'basic';
   }
 );
+
+defineExpose({
+  getForm: () => ({ ...form }),
+});
 </script>
 
 <style lang="less" scoped>
@@ -323,5 +465,36 @@ watch(
   font-size: 12px;
   color: var(--color-text-2);
   line-height: 1.6;
+}
+
+.preset-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &.switch-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.form-label {
+  font-size: 12px;
+  color: var(--color-text-2);
+  flex-shrink: 0;
+}
+
+.preset-actions {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 </style>
