@@ -1,3 +1,4 @@
+import { Message } from '@arco-design/web-vue';
 import { defHttp } from '@/utils/http';
 
 /**
@@ -21,10 +22,39 @@ enum Api {
   getRouteDetail = './robotdog/waypoint/getRouteDetail',
   getRouteWaypointAll = './robotdog/waypoint/getRouteWaypointAll',
   getPointCloud = './robotdog/waypoint/getPointCloud',
+  getPcdMap = './robotdog/waypoint/getPcdMap',
   getMapList = './robotdog/waypoint/getMapList',
+  getPcdMapList = './robotdog/waypoint/getPcdMapList',
   uploadMap = './robotdog/waypoint/uploadMap',
+  uploadPcdMap = './robotdog/waypoint/uploadPcdMap',
   getNavData = './robotdog/waypoint/getNavData',
   getAllMapNavData = './robotdog/waypoint/getAllMapNavData',
+}
+
+/** PCD 地图图层 */
+export interface PcdMapLayer {
+  key: string;
+  name: string;
+  url?: string;
+  file_url?: string;
+  downsize_url?: string;
+  downsize_file_url?: string;
+}
+
+/** PCD 点云地图 */
+export interface PcdMapItem {
+  id: number;
+  tenant_id?: number;
+  name: string;
+  format?: string;
+  url?: string;
+  file_url?: string;
+  preview_url?: string;
+  origin_x?: number;
+  origin_y?: number;
+  origin_z?: number;
+  scale?: number;
+  layers?: PcdMapLayer[];
 }
 
 export interface DogItem {
@@ -217,10 +247,36 @@ export function getRouteWaypointAll(params?: {
   );
 }
 
-export function getPointCloud(params?: object) {
-  return defHttp.get({ url: Api.getPointCloud, params }, { errorMessageMode: 'message' });
+/** 获取单张点云地图（优先新路径 getPcdMap） */
+export function getPcdMap(params?: { map_id?: number; dog_id?: number; tenant_id?: number }) {
+  return defHttp.get<PcdMapItem>(
+    { url: Api.getPcdMap, params },
+    { errorMessageMode: 'message' }
+  );
 }
 
+/** @deprecated 请改用 getPcdMap */
+export function getPointCloud(params?: object) {
+  return defHttp.get<PcdMapItem>(
+    { url: Api.getPointCloud, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+/** 获取点云地图列表 */
+export function getPcdMapList(params?: {
+  page?: number;
+  limit?: number;
+  name?: string;
+  tenant_id?: number;
+}) {
+  return defHttp.get<PageResult<PcdMapItem>>(
+    { url: Api.getPcdMapList, params },
+    { errorMessageMode: 'message' }
+  );
+}
+
+/** @deprecated 请改用 getPcdMapList；设备侧地图列表仍可能走此接口 */
 export function getMapList(params?: object) {
   return defHttp.get<{
     data?: Array<{ col1?: string; col2?: string; col3?: string }>;
@@ -230,6 +286,50 @@ export function getMapList(params?: object) {
   }>({ url: Api.getMapList, params }, { errorMessageMode: 'none' });
 }
 
+/**
+ * 上传多图层 PCD 地图（multipart：files[] + name）
+ * 注意：不能走 defHttp.post(FormData)，VAxios.request 内 cloneDeep 会清空 FormData。
+ */
+export function uploadPcdMap(files: File[], options?: { name?: string }) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files[]', file));
+  if (options?.name?.trim()) {
+    formData.append('name', options.name.trim());
+  }
+
+  const mainUrl =
+    import.meta.env.VITE_APP_ENV === 'production'
+      ? window?.globalConfig?.Main_url
+      : window?.globalConfig?.Main_url_dev;
+  const url = `${mainUrl}/robotdog/waypoint/uploadPcdMap`;
+
+  // Content-Type: false 让 axios 删除默认 application/json，由浏览器自动带 multipart boundary
+  return defHttp
+    .getAxios()
+    .request({
+      url,
+      method: 'POST',
+      data: formData,
+      timeout: 120000,
+      headers: {
+        // @ts-expect-error axios 用 false 表示删除该头
+        'Content-Type': false,
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    })
+    .then((res) => {
+      const body = res?.data;
+      if (body && Reflect.has(body, 'code') && body.code === 0) {
+        return body.data as PcdMapItem;
+      }
+      const msg = body?.message || '上传地图失败';
+      Message.error({ content: msg, id: 'errmsg' });
+      return Promise.reject(new Error(msg));
+    });
+}
+
+/** @deprecated 请改用 uploadPcdMap */
 export function uploadMap(params: object) {
   return defHttp.post({ url: Api.uploadMap, params }, { errorMessageMode: 'message' });
 }
