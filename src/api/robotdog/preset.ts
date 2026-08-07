@@ -9,18 +9,19 @@ enum Api {
   getPlayUrl = './robotdog/preset/getPlayUrl',
   /** @deprecated 请改用 /robotdog/control/dog/move */
   dogCmd = './robotdog/preset/dogCmd',
-  /** 云台控制（预置位模块） */
+  /** 云台控制（预置位模块）POST */
   ptzMove = './robotdog/preset/ptzMove',
-  ptzRealtime = './robotdog/preset/ptzGetRealtime',
+  /** GET：与后端 GetPtzGetRealtime 对齐 */
+  getPtzGetRealtime = './robotdog/preset/getPtzGetRealtime',
   /** @deprecated 兼容旧路径，新代码用 ptzMove */
   ptzCmd = './robotdog/preset/ptzCmd',
   ptzSetPreset = './robotdog/preset/ptzSetPreset',
   ptzUpdatePresetBase = './robotdog/preset/ptzUpdatePresetBase',
-  ptzPresetList = './robotdog/preset/ptzPresetList',
-  ptzPresetDetail = './robotdog/preset/ptzPresetDetail',
+  getPtzPresetList = './robotdog/preset/getPtzPresetList',
+  getPtzPresetDetail = './robotdog/preset/getPtzPresetDetail',
   ptzPresetDel = './robotdog/preset/ptzPresetDel',
   ptzPhoto = './robotdog/preset/ptzPhoto',
-  ptzPhotoList = './robotdog/preset/ptzPhotoList',
+  getPtzPhotoList = './robotdog/preset/getPtzPhotoList',
   gotoWaypoint = './robotdog/preset/gotoWaypoint',
   runRoute = './robotdog/preset/runRoute',
   getTaskStatus = './robotdog/preset/getTaskStatus',
@@ -140,27 +141,41 @@ export function ptzCmd(params: {
 /** 云台控制：POST /robotdog/preset/ptzMove */
 export function ptzMove(params: {
   ptz_id?: number;
+  dog_id?: number;
   cmd?: string;
   direction?: string;
+  /** 相对步进；方向单位度，变倍单位倍 */
+  step?: number;
+  /** 兼容旧字段；未传 step 时可作步进 */
   speed?: number;
   duration?: number;
-  step?: number;
+  axis?: 'yaw' | 'pitch' | 'zoom' | string;
+  delta?: number;
+  zoom_max?: number;
+  yaw?: number;
+  pitch?: number;
   pan?: number;
   tilt?: number;
   roll?: number;
+  mode?: string;
+  folder?: string;
+  filename?: string;
 }) {
   return defHttp.post({ url: Api.ptzMove, params }, { errorMessageMode: 'message' });
 }
 
-/** 云台实时：GET /robotdog/preset/ptzGetRealtime */
-export function getPtzRealtime(params?: { ptz_id?: number }) {
-  return defHttp.get({ url: Api.ptzRealtime, params }, { errorMessageMode: 'none' });
+/** 云台实时：GET /robotdog/preset/getPtzGetRealtime
+ * 文档约定：dog_id 必填（通过机械狗绑定找云台）；ptz_id 可选且优先。
+ */
+export function getPtzRealtime(params: { dog_id: number; ptz_id?: number; tenant_id?: number }) {
+  return defHttp.get({ url: Api.getPtzGetRealtime, params }, { errorMessageMode: 'none' });
 }
 
 /** 设置/更新预置位（全部信息，含实时姿态） */
 export function ptzSetPreset(params: {
   waypoint_id: number;
   ptz_id?: number;
+  dog_id?: number;
   id?: number;
   sort_no?: number;
   servo_photo?: number;
@@ -193,14 +208,14 @@ export function getPtzPresetList(params?: {
   limit?: number;
 }) {
   return defHttp.get<PageResult<PtzPresetItem>>(
-    { url: Api.ptzPresetList, params },
+    { url: Api.getPtzPresetList, params },
     { errorMessageMode: 'message' }
   );
 }
 
 export function getPtzPresetDetail(params: { id: number }) {
   return defHttp.get<PtzPresetItem>(
-    { url: Api.ptzPresetDetail, params },
+    { url: Api.getPtzPresetDetail, params },
     { errorMessageMode: 'message' }
   );
 }
@@ -211,6 +226,7 @@ export function ptzPresetDel(params: { id: number }) {
 
 export function ptzPhoto(params?: {
   ptz_id?: number;
+  dog_id?: number;
   waypoint_id?: number;
   mode?: string;
   folder?: string;
@@ -229,7 +245,7 @@ export function getPtzPhotoList(params?: {
   limit?: number;
 }) {
   return defHttp.get<PageResult<PtzPhotoItem>>(
-    { url: Api.ptzPhotoList, params },
+    { url: Api.getPtzPhotoList, params },
     { errorMessageMode: 'message' }
   );
 }
