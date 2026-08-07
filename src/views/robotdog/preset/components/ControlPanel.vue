@@ -67,21 +67,25 @@
       <a-tab-pane key="ptz" title="云台">
         <div class="section">
           <div class="section-title">方向控制</div>
+          <div class="ptz-mode">
+            <span>快速步进</span>
+            <a-switch v-model="ptzFast" size="small" />
+          </div>
           <div class="pad">
             <div class="pad-row">
-              <span />
-              <a-button long @click="emitPtz('up')">上仰</a-button>
-              <span />
+              <a-button long @click="emitPtz('up_left')">左上</a-button>
+              <a-button long @click="emitPtz('up')">上</a-button>
+              <a-button long @click="emitPtz('up_right')">右上</a-button>
             </div>
             <div class="pad-row">
-              <a-button long @click="emitPtz('left')">左转</a-button>
-              <a-button long type="outline" @click="emitPtz('home')">回正</a-button>
-              <a-button long @click="emitPtz('right')">右转</a-button>
+              <a-button long @click="emitPtz('left')">左</a-button>
+              <a-button long type="outline" @click="emitPtz('home')">回中</a-button>
+              <a-button long @click="emitPtz('right')">右</a-button>
             </div>
             <div class="pad-row">
-              <span />
-              <a-button long @click="emitPtz('down')">下俯</a-button>
-              <span />
+              <a-button long @click="emitPtz('down_left')">左下</a-button>
+              <a-button long @click="emitPtz('down')">下</a-button>
+              <a-button long @click="emitPtz('down_right')">右下</a-button>
             </div>
           </div>
 
@@ -90,17 +94,20 @@
             <a-button long type="outline" @click="emitPtz('zoom_in')">变倍 +</a-button>
             <a-button long type="outline" @click="emitPtz('zoom_out')">变倍 -</a-button>
           </div>
+          <div class="zoom-row mt8">
+            <a-button long type="outline" @click="emitPtz('zoom_home')">变倍回 1x</a-button>
+            <a-button long type="outline" @click="emitPtz('refresh')">刷新姿态</a-button>
+          </div>
 
           <div class="section-title mt">变焦控制</div>
           <div class="zoom-row">
-            <a-button long type="outline" @click="emitPtz('focus_near')">变焦 +</a-button>
-            <a-button long type="outline" @click="emitPtz('focus_far')">变焦 -</a-button>
+            <a-button long type="outline" @click="emitPtz('focus_near')">近焦</a-button>
+            <a-button long type="outline" @click="emitPtz('focus_far')">远焦</a-button>
           </div>
           <div class="ptz-values">
-            <div>俯仰 Pitch：{{ ptz.pitch }}°</div>
-            <div>偏航 Yaw：{{ ptz.yaw }}°</div>
-            <div>变倍 Zoom：{{ ptz.zoom.toFixed(1) }}x</div>
-            <div>变焦 Focus：{{ ptz.focus.toFixed(1) }}</div>
+            <div>俯仰 Pitch：{{ realtimePitchText }}</div>
+            <div>偏航 Yaw：{{ realtimeYawText }}</div>
+            <div>变倍 Zoom：{{ realtimeZoomText }}</div>
           </div>
 
           <template v-if="showPresetConfig">
@@ -177,6 +184,10 @@ const props = defineProps<{
   /** 当前预置位回填 */
   preset?: PtzPresetItem | null;
   actionLoading?: '' | 'call' | 'base' | 'set' | 'del';
+  /** 云台实时姿态（来自 getPtzGetRealtime） */
+  ptzPitch?: number | null;
+  ptzYaw?: number | null;
+  ptzZoom?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -203,13 +214,23 @@ const activeTab = defineModel<string>('activeTab', { default: 'dog' });
 const dogSpeed = ref(0.6);
 const gait = ref<'basic' | 'stair'>('basic');
 const chargeLoading = ref<'enter' | 'exit' | ''>('');
-const ptz = reactive({ pitch: 0, yaw: 0, zoom: 1, focus: 1 });
+/** 开启后方向/变倍走 *_fast 命令（约 5 倍步进） */
+const ptzFast = ref(false);
 const form = reactive<PresetFormState>({
   id: undefined,
   sort_no: 1,
   servo_photo: 0,
   auto_home: 0,
 });
+
+const fmtNum = (v: number | null | undefined, suffix = '', digits = 1) => {
+  if (v == null || Number.isNaN(Number(v))) return '未知';
+  return `${Number(v).toFixed(digits)}${suffix}`;
+};
+
+const realtimePitchText = computed(() => fmtNum(props.ptzPitch, '°', 1));
+const realtimeYawText = computed(() => fmtNum(props.ptzYaw, '°', 1));
+const realtimeZoomText = computed(() => fmtNum(props.ptzZoom, 'x', 1));
 
 const batteryText = computed(() => {
   if (props.dogId == null) return '未知';
@@ -290,21 +311,13 @@ const emitCharge = async (action: 'enter' | 'exit') => {
 };
 
 const emitPtz = (cmd: string) => {
-  if (cmd === 'home') {
-    ptz.pitch = 0;
-    ptz.yaw = 0;
-    emit('ptz-cmd', 'home', { ...ptz, speed: 50 });
-    return;
-  }
-  if (cmd === 'up') ptz.pitch = Math.min(90, ptz.pitch + 5);
-  if (cmd === 'down') ptz.pitch = Math.max(-90, ptz.pitch - 5);
-  if (cmd === 'left') ptz.yaw = Math.max(-180, ptz.yaw - 5);
-  if (cmd === 'right') ptz.yaw = Math.min(180, ptz.yaw + 5);
-  if (cmd === 'zoom_in') ptz.zoom = Math.min(10, +(ptz.zoom + 0.5).toFixed(1));
-  if (cmd === 'zoom_out') ptz.zoom = Math.max(1, +(ptz.zoom - 0.5).toFixed(1));
-  if (cmd === 'focus_near') ptz.focus = Math.min(10, +(ptz.focus + 0.5).toFixed(1));
-  if (cmd === 'focus_far') ptz.focus = Math.max(1, +(ptz.focus - 0.5).toFixed(1));
-  emit('ptz-cmd', cmd, { ...ptz, speed: 50 });
+  // 默认步进对齐 LIBRA4 文档：yaw=5°，pitch=2°，zoom=0.5x
+  emit('ptz-cmd', cmd, {
+    yaw_step: 5,
+    pitch_step: 2,
+    zoom_step: 0.5,
+    fast: ptzFast.value ? 1 : 0,
+  });
 };
 
 const onServoChange = (v: string | number | boolean) => {
@@ -455,6 +468,19 @@ defineExpose({
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.mt8 {
+  margin-top: 8px;
+}
+
+.ptz-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--color-text-2);
 }
 
 .ptz-values {
