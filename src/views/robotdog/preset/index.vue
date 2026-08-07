@@ -33,6 +33,9 @@
       :show-preset-config="isTaskWaypoint"
       :preset="currentPreset"
       :action-loading="presetActionLoading"
+      :ptz-pitch="ptzPitch"
+      :ptz-yaw="ptzYaw"
+      :ptz-zoom="ptzZoom"
       @dog-cmd="onDogCmd"
       @dog-gait="onDogGait"
       @dog-charge="onDogCharge"
@@ -56,6 +59,7 @@ import {
   getPlayUrl,
   getPresetRouteList,
   getPtzPresetDetail,
+  getPtzRealtime,
   getTaskStatus,
   gotoWaypoint,
   ptzMove,
@@ -88,6 +92,11 @@ const dogBattery = ref<number | null>(null);
 const dogNavStatus = ref('未知');
 const statusLoading = ref(false);
 let statusTimer: number | undefined;
+
+const ptzPitch = ref<number | null>(null);
+const ptzYaw = ref<number | null>(null);
+const ptzZoom = ref<number | null>(null);
+let ptzTimer: number | undefined;
 
 const controlTab = ref('dog');
 const controlRef = ref<InstanceType<typeof ControlPanel> | null>(null);
@@ -154,6 +163,69 @@ const startStatusPoll = () => {
   }
   fetchDogRealtime();
   statusTimer = window.setInterval(fetchDogRealtime, 3000);
+};
+
+const resetPtzStatus = () => {
+  ptzPitch.value = null;
+  ptzYaw.value = null;
+  ptzZoom.value = null;
+};
+
+const parsePtzRealtime = (res: Record<string, unknown> | null | undefined) => {
+  // defHttp 已解包为 data 层：{ pitch, yaw, zoom, data: { pitch_offset, ... } }
+  if (!res) {
+    return { pitch: null, yaw: null, zoom: null, pitchOffset: null };
+  }
+  const nested =
+    res.data && typeof res.data === 'object' ? (res.data as Record<string, unknown>) : null;
+  const pitch = Number(res.pitch ?? nested?.pitch);
+  const yaw = Number(res.yaw ?? nested?.yaw);
+  const zoom = Number(res.zoom ?? nested?.zoom);
+  const pitchOffset = Number(nested?.pitch_offset ?? res.pitch_offset);
+  return {
+    pitch: Number.isFinite(pitch) ? pitch : null,
+    yaw: Number.isFinite(yaw) ? yaw : null,
+    zoom: Number.isFinite(zoom) ? zoom : null,
+    pitchOffset: Number.isFinite(pitchOffset) ? pitchOffset : null,
+  };
+};
+
+const fetchPtzRealtime = async () => {
+  const dogId = activeDogId.value;
+  // 两份 LIBRA4 文档均要求 dog_id 必填；无绑定机械狗时不请求
+  if (!dogId) {
+    resetPtzStatus();
+    return;
+  }
+  try {
+    const res = await getPtzRealtime({ dog_id: dogId });
+    const parsed = parsePtzRealtime(res as Record<string, unknown>);
+    ptzPitch.value = parsed.pitch;
+    ptzYaw.value = parsed.yaw;
+    ptzZoom.value = parsed.zoom;
+  } catch {
+    resetPtzStatus();
+  }
+};
+
+const stopPtzPoll = () => {
+  if (ptzTimer) {
+    window.clearInterval(ptzTimer);
+    ptzTimer = undefined;
+  }
+};
+
+const startPtzPoll = () => {
+  stopPtzPoll();
+  if (controlTab.value !== 'ptz') {
+    return;
+  }
+  if (!activeDogId.value) {
+    resetPtzStatus();
+    return;
+  }
+  fetchPtzRealtime();
+  ptzTimer = window.setInterval(fetchPtzRealtime, 3000);
 };
 
 const loadPlayUrl = async (dogId: number | null | undefined) => {
@@ -335,31 +407,67 @@ const onDogCharge = async (action: 'enter' | 'exit') => {
 };
 
 const onPtzCmd = async (cmd: string, payload?: Record<string, number | string>) => {
-  const cmdMap: Record<string, string> = {
-    up: 'up',
-    down: 'down',
-    left: 'left',
-    right: 'right',
-    stop: 'stop',
-    home: 'home',
-    'zoom-in': 'zoom_in',
-    'zoom-out': 'zoom_out',
-    zoom_in: 'zoom_in',
-    zoom_out: 'zoom_out',
-    focus_near: 'focus_near',
-    focus_far: 'focus_far',
-    'focus-near': 'focus_near',
-    'focus-far': 'focus_far',
-  };
-  const mapped = cmdMap[cmd];
-  if (!mapped) return;
+  const fast = Number(payload?.fast) === 1;
+  const yawStep = Number(payload?.yaw_step ?? 5);
+  const pitchStep = Number(payload?.pitch_step ?? 2);
+  const zoomStep = Number(payload?.zoom_step ?? 0.5);
+  const dogId = activeDogId.value || undefined;
 
-  await ptzMove({
-    cmd: mapped,
-    speed: Number(payload?.speed ?? 50),
-    pan: Number(payload?.yaw ?? 0),
-    tilt: Number(payload?.pitch ?? 0),
-  });
+  const withFast = (base: string) => (fast ? `${base}_fast` : base);
+
+  /** 斜向：后端无对角命令，顺序发两轴相对步进 */
+  const diagonalMap: Record<string, [string, string]> = {
+    up_left: ['up', 'left'],
+    up_right: ['up', 'right'],
+    down_left: ['down', 'left'],
+    down_right: ['down', 'right'],
+    left_up: ['up', 'left'],
+    right_up: ['up', 'right'],
+    left_down: ['down', 'left'],
+    right_down: ['down', 'right'],
+  };
+
+  const sendMove = async (moveCmd: string, step?: number) => {
+    await ptzMove({
+      cmd: moveCmd,
+      dog_id: dogId,
+      ...(step != null ? { step } : {}),
+    });
+  };
+
+  const diag = diagonalMap[cmd];
+  if (diag) {
+    const [pitchCmd, yawCmd] = diag;
+    await sendMove(withFast(pitchCmd), pitchStep);
+    await sendMove(withFast(yawCmd), yawStep);
+    await fetchPtzRealtime();
+    return;
+  }
+
+  const singleMap: Record<string, { cmd: string; step?: number }> = {
+    up: { cmd: withFast('up'), step: pitchStep },
+    down: { cmd: withFast('down'), step: pitchStep },
+    left: { cmd: withFast('left'), step: yawStep },
+    right: { cmd: withFast('right'), step: yawStep },
+    zoom_in: { cmd: withFast('zoom_in'), step: zoomStep },
+    zoom_out: { cmd: withFast('zoom_out'), step: zoomStep },
+    'zoom-in': { cmd: withFast('zoom_in'), step: zoomStep },
+    'zoom-out': { cmd: withFast('zoom_out'), step: zoomStep },
+    home: { cmd: 'home' },
+    zoom_home: { cmd: 'zoom_home' },
+    refresh: { cmd: 'refresh' },
+    status: { cmd: 'refresh' },
+    stop: { cmd: 'stop' },
+    focus_near: { cmd: 'focus_near' },
+    focus_far: { cmd: 'focus_far' },
+    'focus-near': { cmd: 'focus_near' },
+    'focus-far': { cmd: 'focus_far' },
+  };
+
+  const mapped = singleMap[cmd];
+  if (!mapped) return;
+  await sendMove(mapped.cmd, mapped.step);
+  await fetchPtzRealtime();
 };
 
 const onPresetFormChange = (form: PresetFormState) => {
@@ -381,6 +489,7 @@ const onPresetSet = async () => {
   try {
     const res = await ptzSetPreset({
       waypoint_id: activeWaypointId.value,
+      dog_id: activeDogId.value || undefined,
       id: form.id,
       sort_no: form.sort_no || 1,
       servo_photo: form.servo_photo ? 1 : 0,
@@ -434,12 +543,13 @@ const onPresetCall = async () => {
     }
     await ptzMove({
       cmd: 'angle_set',
-      pan: Number(detail.yaw ?? 0),
-      tilt: Number(detail.pitch ?? 0),
-      roll: Number(detail.roll ?? 0),
+      dog_id: activeDogId.value || undefined,
       ptz_id: detail.ptz_id,
+      yaw: Number(detail.yaw ?? 0),
+      pitch: Number(detail.pitch ?? 0),
     });
     Message.success('已调用预置位');
+    await fetchPtzRealtime();
   } finally {
     presetActionLoading.value = '';
   }
@@ -474,6 +584,7 @@ const onPhoto = async () => {
   try {
     const res = await ptzPhoto({
       waypoint_id: activeWaypointId.value || undefined,
+      dog_id: activeDogId.value || undefined,
     });
     photoUrl.value = res?.url || '';
     photoName.value = res?.filename || '';
@@ -490,15 +601,23 @@ const onPhoto = async () => {
 
 watch(activeDogId, () => {
   startStatusPoll();
+  if (controlTab.value === 'ptz') startPtzPoll();
+});
+
+watch(controlTab, (tab) => {
+  if (tab === 'ptz') startPtzPoll();
+  else stopPtzPoll();
 });
 
 onMounted(async () => {
   await fetchRoutes();
   startStatusPoll();
+  if (controlTab.value === 'ptz') startPtzPoll();
 });
 
 onBeforeUnmount(() => {
   stopStatusPoll();
+  stopPtzPoll();
 });
 </script>
 
