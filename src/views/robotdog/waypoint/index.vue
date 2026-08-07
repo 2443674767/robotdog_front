@@ -5,6 +5,7 @@
       :waypoints="mapWaypoints"
       :active-waypoint-id="activeWaypointId"
       :route-waypoint-ids="activeRouteWaypointIds"
+      :dog-id="activeDogId"
     />
     <div class="side">
       <DogConfigList
