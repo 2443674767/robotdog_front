@@ -65,6 +65,8 @@ export interface PtzPresetItem {
   updated_at?: string;
 }
 
+export type PtzPhotoMode = 'visible' | 'ir' | 'both';
+
 export interface PtzPhotoItem {
   id: number;
   tenant_id?: number;
@@ -74,7 +76,13 @@ export interface PtzPhotoItem {
   file_path?: string;
   /** 预览地址 */
   url?: string;
-  mode?: string;
+  mode?: PtzPhotoMode | string;
+  photos?: Array<{
+    filename?: string;
+    file_path?: string;
+    url?: string;
+    mode?: PtzPhotoMode | string;
+  }>;
   raw_data?: string;
   created_at?: string;
 }
@@ -228,7 +236,13 @@ export function ptzPhoto(params?: {
   ptz_id?: number;
   dog_id?: number;
   waypoint_id?: number;
-  mode?: string;
+  /** visible=可见光，ir=红外，both=同时拍两张；默认 both */
+  mode?: PtzPhotoMode | string;
+  photo_mode?: PtzPhotoMode | string;
+  camera_mode?: PtzPhotoMode | string;
+  stream_type?: PtzPhotoMode | string;
+  video_type?: PtzPhotoMode | string;
+  channel?: PtzPhotoMode | string;
   folder?: string;
   filename?: string;
 }) {
