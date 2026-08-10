@@ -579,17 +579,19 @@ const onPresetDel = () => {
   });
 };
 
-const onPhoto = async () => {
+const onPhoto = async (mode: 'visible' | 'ir' = 'visible') => {
   photoLoading.value = true;
   try {
     const res = await ptzPhoto({
       waypoint_id: activeWaypointId.value || undefined,
       dog_id: activeDogId.value || undefined,
+      mode,
     });
-    photoUrl.value = res?.url || '';
-    photoName.value = res?.filename || '';
+    const first = res?.photos?.find((p) => p.mode === mode) || res?.photos?.[0];
+    photoUrl.value = res?.url || first?.url || '';
+    photoName.value = res?.filename || first?.filename || '';
     photoPreviewKey.value += 1;
-    Message.success('拍照成功');
+    Message.success(mode === 'ir' ? '红外拍照成功' : '可见光拍照成功');
   } catch {
     photoUrl.value = '';
     photoName.value = '';
