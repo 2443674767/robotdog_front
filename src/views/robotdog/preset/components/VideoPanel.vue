@@ -1,7 +1,7 @@
 <template>
   <div class="video-panel-wrap">
     <div class="video-toolbar">
-      <a-button type="primary" size="small" :loading="photoLoading" @click="emit('photo')">
+      <a-button type="primary" size="small" :loading="photoLoading" @click="onPhotoClick">
         拍照
       </a-button>
       <button type="button" class="switch-btn toolbar-switch" @click="toggleStream">
@@ -48,8 +48,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'photo'): void;
+  /** 按当前画面：可见光 visible / 红外 ir */
+  (e: 'photo', mode: 'visible' | 'ir'): void;
 }>();
+
+const onPhotoClick = () => {
+  emit('photo', isThermal.value ? 'ir' : 'visible');
+};
 
 const nowText = ref(dayjs().format('YYYY-MM-DD HH:mm:ss'));
 const isThermal = ref(false);
