@@ -27,6 +27,7 @@ enum Api {
   getPcdMapList = './robotdog/waypoint/getPcdMapList',
   uploadMap = './robotdog/waypoint/uploadMap',
   uploadPcdMap = './robotdog/waypoint/uploadPcdMap',
+  delPcdMap = './robotdog/waypoint/delPcdMap',
   getNavData = './robotdog/waypoint/getNavData',
   getAllMapNavData = './robotdog/waypoint/getAllMapNavData',
 }
@@ -35,9 +36,14 @@ enum Api {
 export interface PcdMapLayer {
   key: string;
   name: string;
+  /** MinIO object path，如 maps/xxx/global_map.pcd */
+  path?: string;
+  downsize_path?: string;
+  /** 后端代理地址（推荐给 PCDLoader，避免 MinIO CORS） */
   url?: string;
-  file_url?: string;
   downsize_url?: string;
+  /** MinIO 直链，仅作后备 */
+  file_url?: string;
   downsize_file_url?: string;
 }
 
@@ -332,6 +338,14 @@ export function uploadPcdMap(files: File[], options?: { name?: string }) {
 /** @deprecated 请改用 uploadPcdMap */
 export function uploadMap(params: object) {
   return defHttp.post({ url: Api.uploadMap, params }, { errorMessageMode: 'message' });
+}
+
+/** 删除点云地图（含 MinIO 下 .pcd 对象） */
+export function delPcdMap(params: { id: number }) {
+  return defHttp.post(
+    { url: Api.delPcdMap, params },
+    { errorMessageMode: 'message' }
+  );
 }
 
 export interface MapNavPointItem {
