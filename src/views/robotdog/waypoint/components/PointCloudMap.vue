@@ -11,13 +11,14 @@
           <a-select
             v-model="selectedMapId"
             size="mini"
-            allow-clear
             :loading="mapListLoading"
             placeholder="切换地图"
             style="width: 160px"
             @change="onMapSelect"
           >
-            <a-option v-for="m in mapList" :key="m.id" :value="m.id">{{ m.name || `地图 ${m.id}` }}</a-option>
+            <a-option v-for="m in mapList" :key="m.id" :value="m.id" :disabled="invalidMapIds.has(m.id)">
+              {{ m.name || `地图 ${m.id}` }}{{ invalidMapIds.has(m.id) ? '（无效）' : '' }}
+            </a-option>
           </a-select>
           <a-button size="mini" :loading="mapLoading" @click="fetchAndLoadMap()">获取地图</a-button>
           <a-button size="mini" @click="settingsVisible = true">地图设置</a-button>
@@ -77,6 +78,9 @@
 
         <div class="settings-section">
           <div class="section-title">上传 PCD</div>
+          <div class="muted" style="margin-bottom: 6px">
+            须为真实点云（文件头含 VERSION）。勿上传设备返回的 JSON 错误内容。
+          </div>
           <a-input v-model="uploadName" size="small" placeholder="地图名称（可选）" allow-clear style="margin-bottom: 8px" />
           <a-upload
             :file-list="uploadFileList"
@@ -84,7 +88,7 @@
             :custom-request="noopUploadRequest"
             accept=".pcd,application/octet-stream"
             multiple
-            tip="仅支持 .pcd，可多选"
+            tip="仅支持真实 .pcd，可多选"
             @change="onUploadChange"
           />
           <a-button
@@ -100,6 +104,16 @@
         </div>
 
         <a-button long :loading="mapLoading" @click="reloadCurrentLayers">重新加载当前图层</a-button>
+        <a-button
+          long
+          status="danger"
+          :loading="deletingMap"
+          :disabled="!selectedMapId"
+          style="margin-top: 8px"
+          @click="confirmDeleteMap"
+        >
+          删除当前地图（含无效点云）
+        </a-button>
       </div>
     </a-modal>
   </div>
@@ -107,13 +121,14 @@
 
 <script lang="ts" setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Message } from '@arco-design/web-vue';
+import { Message, Modal } from '@arco-design/web-vue';
 import type { FileItem } from '@arco-design/web-vue';
 import type { RequestOption } from '@arco-design/web-vue/es/upload/interfaces';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { PCDLoader } from 'three/examples/jsm/loaders/PCDLoader.js';
 import {
+  delPcdMap,
   getPcdMap,
   getPcdMapList,
   uploadPcdMap,
@@ -148,6 +163,8 @@ const mapLoading = ref(false);
 const statusText = ref('');
 const statusKind = ref('');
 const pointCount = ref(0);
+/** 已确认点云内容无效的地图（MinIO 里是 JSON 错误而非 PCD） */
+const invalidMapIds = ref<Set<number>>(new Set());
 
 const settingsVisible = ref(false);
 const useDownsize = ref(true);
@@ -157,8 +174,11 @@ const layerOptions = ref<Array<{ key: string; name: string; colorHex: string }>>
 const uploadName = ref('');
 const uploadFileList = ref<FileItem[]>([]);
 const uploading = ref(false);
+const deletingMap = ref(false);
 
 let currentMap: PcdMapItem | null = null;
+/** 上一次成功发起加载的地图 ID，用于切换地图时重置图层勾选 */
+let lastLoadedMapId: number | null = null;
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
@@ -233,21 +253,114 @@ const layerColor = (key: string) => LAYER_META[key]?.color ?? DEFAULT_LAYER_COLO
 
 const layerColorHex = (key: string) => `#${layerColor(key).toString(16).padStart(6, '0')}`;
 
-const resolveLayerUrl = (layer: PcdMapLayer, preferDownsize: boolean): string => {
-  if (preferDownsize) {
-    return layer.downsize_file_url || layer.downsize_url || layer.file_url || layer.url || '';
-  }
-  return layer.file_url || layer.url || layer.downsize_file_url || layer.downsize_url || '';
+const apiBaseUrl = () => {
+  const cfg = (window as any)?.globalConfig || {};
+  const base =
+    import.meta.env.VITE_APP_ENV === 'production'
+      ? cfg.Main_url
+      : cfg.Main_url_dev || cfg.Main_url;
+  return String(base || '').replace(/\/$/, '');
 };
 
-const syncLayerOptions = (layers: PcdMapLayer[]) => {
+/** 相对路径拼到 API 域名；MinIO 直链仅作最后后备 */
+const toAbsolutePcdUrl = (raw: string): string => {
+  const url = String(raw || '').trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = apiBaseUrl();
+  if (!base) return url;
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+};
+
+const proxyFromPath = (objectPath?: string): string => {
+  const path = String(objectPath || '').trim().replace(/^\/+/, '');
+  if (!path || !path.toLowerCase().endsWith('.pcd')) return '';
+  return `/robotdog/waypoint/getPcdFile?path=${encodeURIComponent(path)}`;
+};
+
+/**
+ * 优先使用后端代理 url/downsize_url（或 path 拼代理），
+ * 不要优先 MinIO file_url（localhost:9000 易 CORS，PCDLoader 会解析失败）。
+ */
+const resolveLayerUrl = (layer: PcdMapLayer, preferDownsize: boolean): string => {
+  let raw = '';
+  if (preferDownsize) {
+    raw =
+      layer.downsize_url ||
+      proxyFromPath(layer.downsize_path) ||
+      layer.url ||
+      proxyFromPath(layer.path) ||
+      layer.downsize_file_url ||
+      layer.file_url ||
+      '';
+  } else {
+    raw =
+      layer.url ||
+      proxyFromPath(layer.path) ||
+      layer.file_url ||
+      layer.downsize_url ||
+      proxyFromPath(layer.downsize_path) ||
+      layer.downsize_file_url ||
+      '';
+  }
+  return toAbsolutePcdUrl(raw);
+};
+
+/** 校验二进制是否为 PCD（避免把 JSON 错误页交给 PCDLoader） */
+const inspectPcdBuffer = (buf: ArrayBuffer): { ok: true } | { ok: false; reason: string } => {
+  if (!buf || buf.byteLength < 16) {
+    return { ok: false, reason: '文件过小，不是有效 PCD' };
+  }
+  const head = new TextDecoder('utf-8', { fatal: false }).decode(buf.slice(0, Math.min(buf.byteLength, 256)));
+  const trimmed = head.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const json = JSON.parse(new TextDecoder().decode(buf));
+      const msg = json?.message || json?.msg || '接口返回了 JSON 而非 PCD';
+      return { ok: false, reason: String(msg) };
+    } catch {
+      return { ok: false, reason: '内容是 JSON/文本，不是 PCD 点云' };
+    }
+  }
+  if (trimmed.startsWith('<')) {
+    return { ok: false, reason: '内容是 HTML/XML，不是 PCD 点云' };
+  }
+  // ASCII PCD 通常含 VERSION；二进制 PCD 头也以 # .PCD / VERSION 文本开头
+  if (!/VERSION\s+/i.test(head) && !/#\s*\.?PCD/i.test(head)) {
+    return { ok: false, reason: '缺少 PCD 文件头（VERSION），请重新上传真实 .pcd' };
+  }
+  return { ok: true };
+};
+
+const loadPcdPoints = async (url: string): Promise<THREE.Points> => {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const buf = await res.arrayBuffer();
+  const check = inspectPcdBuffer(buf);
+  if (!check.ok) {
+    throw new Error(check.reason);
+  }
+  return pcdLoader.parse(buf) as THREE.Points;
+};
+
+const isLikelyPcdFile = async (file: File): Promise<string | null> => {
+  if (!file.name.toLowerCase().endsWith('.pcd')) return '仅支持 .pcd 文件';
+  if (file.size < 64) return `${file.name} 过小，不像有效点云`;
+  const slice = await file.slice(0, 256).arrayBuffer();
+  const check = inspectPcdBuffer(slice);
+  return check.ok ? null : `${file.name}: ${check.reason}`;
+};
+
+const syncLayerOptions = (layers: PcdMapLayer[], resetChecked = false) => {
   layerOptions.value = layers.map((l) => ({
     key: l.key,
     name: LAYER_META[l.key]?.label || l.name || l.key,
     colorHex: layerColorHex(l.key),
   }));
   syncingLayerKeys = true;
-  if (!checkedLayerKeys.value.length) {
+  if (resetChecked || !checkedLayerKeys.value.length) {
     checkedLayerKeys.value = layers.map((l) => l.key);
   } else {
     const keys = new Set(layers.map((l) => l.key));
@@ -567,16 +680,45 @@ const resize = () => {
   renderer.setSize(w, h, false);
 };
 
-const loadLayersToScene = async (map: PcdMapItem) => {
-  if (!cloudGroup || !scene) return;
+/** 勾选图层只改显隐，不重复下载 */
+const applyLayerVisibility = () => {
+  if (!cloudGroup) return;
+  const selected = new Set(checkedLayerKeys.value);
+  let visiblePoints = 0;
+  cloudGroup.children.forEach((child) => {
+    const show = selected.has(child.name);
+    child.visible = show;
+    if (show && (child as THREE.Points).isPoints) {
+      visiblePoints += (child as THREE.Points).geometry.getAttribute('position')?.count ?? 0;
+    }
+  });
+  if (cloudGroup.children.length) {
+    pointCount.value = visiblePoints;
+  }
+};
+
+const markMapInvalid = (mapId: number) => {
+  const next = new Set(invalidMapIds.value);
+  next.add(mapId);
+  invalidMapIds.value = next;
+};
+
+const isCorruptErrors = (errors: string[]) =>
+  errors.some(
+    (e) =>
+      e.includes('文件不存在') ||
+      e.includes('不是 PCD') ||
+      e.includes('JSON') ||
+      e.includes('缺少 PCD')
+  );
+
+const loadLayersToScene = async (map: PcdMapItem): Promise<boolean> => {
+  if (!cloudGroup || !scene) return false;
   const token = ++loadToken;
   const layers = map.layers || [];
-  syncLayerOptions(layers);
-
-  const keys = checkedLayerKeys.value.length
-    ? checkedLayerKeys.value
-    : layers.map((l) => l.key);
-  const selected = layers.filter((l) => keys.includes(l.key));
+  const mapChanged = lastLoadedMapId !== map.id;
+  lastLoadedMapId = map.id;
+  syncLayerOptions(layers, mapChanged);
 
   mapLoading.value = true;
   statusText.value = `正在加载 ${map.name || map.id}…`;
@@ -584,69 +726,142 @@ const loadLayersToScene = async (map: PcdMapItem) => {
   clearGroup(cloudGroup);
   pointCount.value = 0;
 
-  if (!selected.length) {
+  if (!layers.length) {
     mapLoading.value = false;
-    statusText.value = '请至少选择一个图层';
+    statusText.value = '该地图没有图层文件';
     statusKind.value = 'error';
-    return;
+    markMapInvalid(map.id);
+    return false;
   }
 
   let total = 0;
   const errors: string[] = [];
 
-  for (const layer of selected) {
-    if (token !== loadToken) return;
+  // 一次拉取全部图层，勾选只控制 visible，避免反复请求刷屏
+  for (const layer of layers) {
+    if (token !== loadToken) return false;
     const url = resolveLayerUrl(layer, useDownsize.value);
     if (!url) {
       errors.push(`${layer.key}: 无可用地址`);
       continue;
     }
     try {
-      const points = await pcdLoader.loadAsync(url);
+      const points = await loadPcdPoints(url);
       if (token !== loadToken) {
         disposeObject3D(points);
-        return;
+        return false;
       }
       colorizePoints(points, layerColor(layer.key));
       points.name = layer.key;
+      points.visible = checkedLayerKeys.value.includes(layer.key);
       cloudGroup.add(points);
-      total += points.geometry.getAttribute('position')?.count ?? 0;
-    } catch (err) {
-      console.error(err);
-      errors.push(`${layer.key}: 加载失败`);
+      if (points.visible) {
+        total += points.geometry.getAttribute('position')?.count ?? 0;
+      }
+    } catch (err: any) {
+      errors.push(`${layer.key}: ${err?.message || '加载失败'}`);
     }
   }
 
-  if (token !== loadToken) return;
+  if (token !== loadToken) return false;
 
   mapLoading.value = false;
   pointCount.value = total;
 
   if (!cloudGroup.children.length) {
-    statusText.value = errors.join('；') || '加载失败';
+    const corrupt = isCorruptErrors(errors);
+    if (corrupt) markMapInvalid(map.id);
+    statusText.value = corrupt
+      ? `地图 ${map.id} 点云无效（不是 PCD 文件）`
+      : errors.slice(0, 3).join('；') || '加载失败';
     statusKind.value = 'error';
-    return;
+    if (errors.length) {
+      console.warn(`[PCD] 地图 ${map.id} 全部图层失败（${errors.length}）:`, errors[0]);
+    }
+    return false;
   }
 
+  applyLayerVisibility();
   fitCameraToObject(cloudGroup);
   statusText.value = errors.length
-    ? `已加载 ${cloudGroup.children.length} 层（部分失败）`
+    ? `已加载 ${cloudGroup.children.length}/${layers.length} 层（部分失败）`
     : `已加载 ${cloudGroup.children.length} 层`;
   statusKind.value = errors.length ? 'error' : 'ok';
+  return true;
 };
 
 const applyMapData = async (map: PcdMapItem | null | undefined) => {
   if (!map?.id) {
     statusText.value = '暂无点云地图';
     statusKind.value = 'error';
-    return;
+    return false;
   }
   currentMap = map;
   selectedMapId.value = map.id;
   if (!mapList.value.some((m) => m.id === map.id)) {
     mapList.value = [map, ...mapList.value];
   }
-  await loadLayersToScene(map);
+  return loadLayersToScene(map);
+};
+
+/** 按候选列表依次尝试，跳过已确认无效的地图（解决最新地图 5 为坏数据的问题） */
+const loadBestAvailableMap = async (preferred?: { map_id?: number; dog_id?: number }) => {
+  mapLoading.value = true;
+  statusText.value = '正在获取可用点云地图…';
+  statusKind.value = 'loading';
+  const tried = new Set<number>();
+  const candidates: number[] = [];
+
+  const pushId = (id?: number | null) => {
+    const n = Number(id);
+    if (Number.isFinite(n) && n > 0 && !candidates.includes(n)) candidates.push(n);
+  };
+
+  pushId(preferred?.map_id);
+  if (preferred?.dog_id != null) {
+    try {
+      const byDog = await getPcdMap({ dog_id: preferred.dog_id });
+      pushId(byDog?.id);
+    } catch {
+      // ignore
+    }
+  }
+  mapList.value.forEach((m) => pushId(m.id));
+
+  if (!candidates.length) {
+    try {
+      const latest = await getPcdMap(preferred?.dog_id != null ? { dog_id: preferred.dog_id } : {});
+      pushId(latest?.id);
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const id of candidates) {
+    if (tried.has(id) || invalidMapIds.value.has(id)) continue;
+    tried.add(id);
+    try {
+      const detail = await getPcdMap({ map_id: id });
+      if (!detail?.id) continue;
+      const ok = await applyMapData(detail);
+      if (ok) {
+        if (preferred?.map_id && preferred.map_id !== detail.id) {
+          Message.success(`地图 ${preferred.map_id} 无效，已切换到：${detail.name || detail.id}`);
+        } else if (id !== candidates[0]) {
+          Message.success(`已自动切换到可用地图：${detail.name || detail.id}`);
+        }
+        return true;
+      }
+    } catch {
+      markMapInvalid(id);
+    }
+  }
+
+  mapLoading.value = false;
+  statusText.value = '未找到可用点云地图，请上传真实 .pcd（文件头含 VERSION）';
+  statusKind.value = 'error';
+  Message.warning('未找到可用点云地图。请勿上传 JSON/错误响应文件，需上传真实 PCD');
+  return false;
 };
 
 const fetchMapList = async () => {
@@ -662,38 +877,59 @@ const fetchMapList = async () => {
 };
 
 const fetchAndLoadMap = async (opts?: { map_id?: number; dog_id?: number }) => {
-  mapLoading.value = true;
-  statusText.value = '正在获取地图…';
-  statusKind.value = 'loading';
   try {
-    const params: { map_id?: number; dog_id?: number } = {};
-    if (opts?.map_id != null) params.map_id = opts.map_id;
-    else if (selectedMapId.value != null) params.map_id = selectedMapId.value;
-    else if (opts?.dog_id != null) params.dog_id = opts.dog_id;
-    else if (props.dogId != null) params.dog_id = props.dogId;
-
-    const map = await getPcdMap(params);
-    await applyMapData(map);
+    if (opts?.map_id != null) {
+      mapLoading.value = true;
+      statusText.value = '正在获取地图…';
+      statusKind.value = 'loading';
+      const map = await getPcdMap({ map_id: opts.map_id });
+      const ok = await applyMapData(map);
+      if (!ok) {
+        await loadBestAvailableMap({ map_id: opts.map_id, dog_id: opts.dog_id ?? props.dogId ?? undefined });
+      }
+      return;
+    }
+    await loadBestAvailableMap({
+      dog_id: opts?.dog_id ?? props.dogId ?? undefined,
+    });
   } catch (e: any) {
     statusText.value = e?.message || '获取地图失败';
     statusKind.value = 'error';
-  } finally {
     mapLoading.value = false;
   }
 };
 
-const onMapSelect = async (id: number | undefined) => {
-  if (id == null) return;
-  await fetchAndLoadMap({ map_id: id });
+const onMapSelect = async (id: unknown) => {
+  const mapId = Number(id);
+  if (!Number.isFinite(mapId) || mapId <= 0) return;
+  if (invalidMapIds.value.has(mapId)) {
+    Message.warning('该地图点云无效，请选择其他地图或重新上传');
+    selectedMapId.value = currentMap?.id;
+    return;
+  }
+  mapLoading.value = true;
+  statusText.value = '正在获取地图…';
+  statusKind.value = 'loading';
+  try {
+    const map = await getPcdMap({ map_id: mapId });
+    const ok = await applyMapData(map);
+    if (!ok) {
+      Message.warning('该地图点云无效，已保持/切换到可用地图');
+      await loadBestAvailableMap({ dog_id: props.dogId ?? undefined });
+    }
+  } catch (e: any) {
+    Message.error(e?.message || '获取地图失败');
+    mapLoading.value = false;
+  }
 };
 
 const reloadCurrentLayers = async () => {
-  if (!currentMap) {
-    await fetchAndLoadMap();
+  if (!currentMap?.id) {
+    await loadBestAvailableMap({ dog_id: props.dogId ?? undefined });
     return;
   }
-  // 重新拉详情以拿到最新 layers
-  await fetchAndLoadMap({ map_id: currentMap.id });
+  const map = await getPcdMap({ map_id: currentMap.id });
+  await applyMapData(map);
 };
 
 /** 仅本地选文件，真正上传由「上传并加载」触发 */
@@ -720,6 +956,45 @@ const onUploadChange = (fileList: FileItem[]) => {
   });
 };
 
+const confirmDeleteMap = () => {
+  const id = selectedMapId.value;
+  if (id == null) {
+    Message.warning('请先选择要删除的地图');
+    return;
+  }
+  const name = mapList.value.find((m) => m.id === id)?.name || `地图 ${id}`;
+  Modal.confirm({
+    title: '删除点云地图',
+    content: `确认删除「${name}」及其 MinIO 点云文件？此操作不可恢复。`,
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    onOk: async () => {
+      deletingMap.value = true;
+      try {
+        await delPcdMap({ id });
+        const next = new Set(invalidMapIds.value);
+        next.delete(id);
+        invalidMapIds.value = next;
+        mapList.value = mapList.value.filter((m) => m.id !== id);
+        if (currentMap?.id === id) {
+          currentMap = null;
+          selectedMapId.value = undefined;
+          clearGroup(cloudGroup);
+          pointCount.value = 0;
+          layerOptions.value = [];
+          checkedLayerKeys.value = [];
+        }
+        Message.success('地图已删除');
+        await loadBestAvailableMap({ dog_id: props.dogId ?? undefined });
+      } catch (e: any) {
+        Message.error(e?.message || '删除失败');
+      } finally {
+        deletingMap.value = false;
+      }
+    },
+  });
+};
+
 const doUpload = async () => {
   const files = uploadFileList.value
     .map((f) => fileItemToFile(f))
@@ -728,19 +1003,37 @@ const doUpload = async () => {
     Message.warning('请选择 .pcd 文件');
     return;
   }
+  for (const file of files) {
+    const invalid = await isLikelyPcdFile(file);
+    if (invalid) {
+      Message.error(`请勿上传无效文件：${invalid}`);
+      return;
+    }
+  }
   uploading.value = true;
   try {
+    // 上传期间取消进行中的旧地图加载，避免和上传结果抢状态
+    loadToken += 1;
     const map = await uploadPcdMap(files, { name: uploadName.value.trim() || undefined });
+    if (!map?.id) {
+      Message.error('上传成功但未返回地图 ID');
+      return;
+    }
+    // 新上传的地图从无效集合中移除
+    if (invalidMapIds.value.has(map.id)) {
+      const next = new Set(invalidMapIds.value);
+      next.delete(map.id);
+      invalidMapIds.value = next;
+    }
     Message.success('上传地图成功');
     uploadFileList.value = [];
     uploadName.value = '';
     await fetchMapList();
-    if (map?.id) {
-      // 上传响应若缺 layers，再按 id 拉一次完整详情再加载
-      const detail = map.layers?.length ? map : await getPcdMap({ map_id: map.id });
-      await applyMapData(detail || map);
-    } else {
-      await applyMapData(map);
+    const detail = map.layers?.length ? map : await getPcdMap({ map_id: map.id });
+    selectedMapId.value = map.id;
+    const ok = await applyMapData(detail || map);
+    if (!ok) {
+      Message.error('上传成功但点云无法解析，请确认文件是真实 PCD（含 VERSION 头）');
     }
     settingsVisible.value = false;
   } catch (e: any) {
@@ -757,8 +1050,8 @@ watch(useDownsize, () => {
 });
 
 const onLayerKeysChange = () => {
-  if (syncingLayerKeys || !currentMap) return;
-  loadLayersToScene(currentMap);
+  if (syncingLayerKeys) return;
+  applyLayerVisibility();
 };
 
 watch(
@@ -809,7 +1102,8 @@ onMounted(async () => {
   renderLoop();
 
   await fetchMapList();
-  await fetchAndLoadMap(props.dogId != null ? { dog_id: props.dogId } : undefined);
+  // 不要盲信「最新地图」：地图 5 这类坏数据会挡住可用地图
+  await loadBestAvailableMap({ dog_id: props.dogId ?? undefined });
 });
 
 /** 父页异步选中机械狗后，若尚未加载到地图则再按 dog_id 拉一次 */
